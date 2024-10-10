@@ -1,0 +1,5 @@
+board:
+  name: robomaster_board_c
+  vendor: dji
+  socs:
+    - name: stm32f407xx

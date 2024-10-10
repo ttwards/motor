@@ -1,0 +1,15 @@
+description: DJI M3508 Motor
+
+compatible: "dji,m3508"
+
+include: [base.yaml]
+
+properties:
+  reg:
+    required: true
+
+  gear-ratio:
+    required: true
+
+  esc:
+    required: true

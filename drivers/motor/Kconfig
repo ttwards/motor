@@ -1,0 +1,27 @@
+# Motor driver configuration options
+
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig Motor
+    bool "Motor drivers"
+    help
+      Enable support for motors.
+
+if Motor
+
+module = Motor
+module-str = Motor
+source "subsys/logging/Kconfig.template.log_config"
+
+config PACKAGE_SEND_TIME_GAP
+    int "Package send time gap"
+    default 50
+    help
+      The time gap between two motor controlling packages in ms
+
+config MOTOR_M3508
+    bool "MOTOR M3508"
+    help
+      Add support for dji m3508 motor
+endif

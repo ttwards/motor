@@ -1,0 +1,17 @@
+# Copyright (c) 2024, ttwards <xuwenxi0517@gmail.com>
+# SPDX-License-Identifier: Apache-2.0
+
+# Enable MPU
+CONFIG_ARM_MPU=n
+
+# Float i/o
+CONFIG_CBPRINTF_FP_SUPPORT=y
+
+# Enable HW stack protection
+CONFIG_HW_STACK_PROTECTION=n
+
+# enable GPIO
+CONFIG_GPIO=y
+
+#CAN
+CONFIG_CAN_DEFAULT_BITRATE=1000000

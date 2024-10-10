@@ -1,0 +1,24 @@
+description: DJI C620 Electronic Speed Controller
+
+compatible: "dji,c620esc"
+
+include: [base.yaml]
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  can-controller:
+    required: true
+
+  tx_id:
+    required: true
+  
+  rx_id:
+    required: true
