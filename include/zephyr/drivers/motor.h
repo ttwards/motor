@@ -170,6 +170,7 @@ __syscall int motor_start();
 static inline int z_impl_motor_start()
 {
 	struct device *cans[CAN_COUNT];
+	//fdsafdsafdsa
 	for (int i = 0; i < CAN_COUNT; i++) {
         cans[i] = DEVICE_DT_GET(DT_INST(i, can));
         if (device_is_ready(cans[i])) {
@@ -185,7 +186,6 @@ static inline int z_impl_motor_start()
 				const struct device *can_dev = DEVICE_DT_GET(GET_CAN_CHANNEL(DT_NODELABEL(dev->name)));
 				if(can_dev == cans[j])
 					dev->data->common->ctrl_ptr = can_dev;
-				
         }
     }
 }
