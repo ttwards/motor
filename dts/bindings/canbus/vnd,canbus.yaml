@@ -1,0 +1,10 @@
+description: Motor CAN bus
+
+compatible: "vnd,canbus"
+
+include: [base.yaml]
+
+properties:
+  can_device:
+    type: phandle
+    required: true  

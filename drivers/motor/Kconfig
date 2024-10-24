@@ -3,15 +3,15 @@
 # Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
 # SPDX-License-Identifier: Apache-2.0
 
-menuconfig Motor
+menuconfig MOTOR
     bool "Motor drivers"
     help
       Enable support for motors.
 
-if Motor
+if MOTOR
 
-module = Motor
-module-str = Motor
+module = MOTOR
+module-str = MOTOR
 source "subsys/logging/Kconfig.template.log_config"
 
 config PACKAGE_SEND_TIME_GAP
@@ -24,4 +24,16 @@ config MOTOR_M3508
     bool "MOTOR M3508"
     help
       Add support for dji m3508 motor
+
+config MOTOR_LOG_LEVEL
+    int "Motor log level"
+    default 4
+    help
+      The log level of motor driver
+
+config MOTOR_INIT_PRIORITY
+    int "Motor init priority"
+    default 90
+    help
+      The init priority of motor driver
 endif

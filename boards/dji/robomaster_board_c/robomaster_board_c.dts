@@ -54,25 +54,46 @@
 			zephyr,code = <INPUT_KEY_0>;
 		};
 	};
-    motor {
-		motor0{
-			compatible = "dji,m3508";
-			tx_addr = <0x200>;
-			rx_addr = <0x201>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&can1>;
+	canbus {
+		canbus1: canbus1 {
+				compatible = "vnd,canbus";
+				status = "okay";
+				can_device = <&can1>;
 		};
-
-		motor1{
-			compatible = "dji,m2006";
-			tx_addr = <0x200>;
-			rx_addr = <0x202>;
-			label = "Motor1";
-			status = "okay";
-			can_channel = <&can1>;
+		canbus2: canbus2 {
+				compatible = "vnd,canbus";
+				status = "okay";
+				can_device = <&can2>;
 		};
 	};
+    motor {
+		motor0: motor0{
+			compatible = "dji,m3508";
+			k_p = <100>;
+			k_i = <10000>;
+			k_d = <3000>;
+			tx_addr = <0x200>;
+			rx_addr = <0x201>;
+			gear_ratio = <1900>;
+			label = "Motor0";
+			status = "okay";
+			can_channel = <&canbus1>;
+		};
+
+		motor1: motor1{
+			compatible = "dji,m3508";
+			k_p = <100>;
+			k_i = <10000>;
+			k_d = <10000>;
+			tx_addr = <0x200>;
+			rx_addr = <0x202>;
+			gear_ratio = <1900>;
+			label = "Motor0";
+			status = "okay";
+			can_channel = <&canbus1>;
+		};
+	};
+
 };
 
 &clk_lsi {

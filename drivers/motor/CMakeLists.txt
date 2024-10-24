@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-zephyr_syscall_header(${CMAKE_SOURCE_DIR}/include/zephyr/drivers/motor.h)
 zephyr_library()
-
-zephyr_library_sources_ifdef()
+zephyr_library_sources_ifdef(CONFIG_MOTOR_M3508 motor_m3508.c)
+zephyr_library_sources_ifdef(CONFIG_MOTOR_M3508 motor_dji.h)

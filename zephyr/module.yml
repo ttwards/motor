@@ -18,4 +18,10 @@ build:
     # Zephyr will use the `<dts_root>/dts` for additional dts files and
     # `<dts_root>/dts/bindings` for additional dts binding files. The `.` is
     # the root of this repository.
-    # dts_root: .
+    dts_root: .
+    # Additional roots for drivers. Zephyr will use the `<driver_root>/drivers`
+    # for additional drivers. The `.` is the root of this repository.
+    # drivers_root: .
+    # Additional include directories for the Zephyr build system. The `.` is
+    # the root of this repository.
+    # include_root: .

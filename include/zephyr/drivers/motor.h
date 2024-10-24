@@ -21,14 +21,17 @@
  * @{
  */
 
+#include <zephyr/kernel.h>
 #include "zephyr/logging/log_core.h"
 #include <zephyr/kernel/thread.h>
 #include <errno.h>
+#include <zephyr/sys/util.h>
 
 #include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
+#include <string.h>
 
 
 
@@ -36,71 +39,72 @@
 extern "C" {
 #endif
 
-LOG_MODULE_REGISTER(motor, LOG_LEVEL_INF);
-
 #define MOTOR_TORQUE_CTRL BIT(0)
 #define MOTOR_SPEED_CTRL BIT(1)
+
+#define MOTOR_DT_DRIVER_DATA_INST_GET(inst) {0}
+
+#define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
+#define DT_DRIVER_GET_CANPHY_IDT(node_id) \
+		DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
+#define DT_DRIVER_GET_CANBUS_NAME(node_id) \
+		DT_NODE_FULL_NAME(DT_DRIVER_GET_CANBUS_IDT(node_id))
+
+#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_DRIVER_GET_CANPHY_IDT(node_id))
+#define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
+
+#define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) \
+	MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
+/**
+ * @brief Static initializer for @p motor_driver_config struct
+ *
+ * @param node_id Devicetree node identifier
+ */
+#define MOTOR_DT_DRIVER_CONFIG_GET(node_id)				\
+	{ \
+		.phy = DT_GET_CANPHY(node_id), \
+		.canbus = DT_DRIVER_GET_CANBUS_NAME(node_id), \
+		.tx_id = DT_PROP(node_id, tx_addr), \
+		.rx_id = DT_PROP(node_id, rx_addr), \
+		.k_p = DT_PROP(node_id, k_p) / 100.0, \
+		.k_i = DT_PROP(node_id, k_i) / 100.0, \
+		.k_d = DT_PROP(node_id, k_d) / 100.0, \
+		.gear_ratio = (double) DT_PROP(node_id, gear_ratio) / 100.0, \
+	}
+
+#define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)   \
+	MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
+
+#define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level,	\
+			     prio, api, ...)				\
+	DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level,	\
+			 prio, api, __VA_ARGS__)
 
 typedef uint8_t motor_mode_t;
 
 
-/** @brief Macros for each in dts */
-#define MOTOR_NODE DT_NODELABEL(motor)
-
-// #define IS_DJI_COMPAT(node_id) \
-//     (DT_NODE_HAS_COMPAT(node_id, dji_m3508) || \
-//      DT_NODE_HAS_COMPAT(node_id, dji_m2006) || \
-//      DT_NODE_HAS_COMPAT(node_id, dji_m1005) || \
-//      DT_NODE_HAS_COMPAT(node_id, dji_others)) // Add other DJI compatible strings as needed
-
-#define GET_DEVICE_POINTER(node_id) DEVICE_DT_GET(node_id),
-
-const struct device *motor_devices[] = {
-    DT_FOREACH_CHILD(MOTOR_NODE, GET_DEVICE_POINTER),
+struct motor_driver_data {
+	/** Motor control mode */
+	motor_mode_t mode;
 };
 
-#define MOTOR_COUNT DT_NUM_INST_STATUS_OKAY(motor)
-#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(can)
-
-#define GET_CAN_CHANNEL(node_id) DT_PHANDLE(node_id, can_channel)
-
-
-/**
- * @brief Motor information structure
- *
- * This structure gathers useful information about motors and neccesary informations.
- */
-typedef struct {
-	uint8_t expect_current;
-	uint8_t expect_rpm;
-} motor_ctrl_info_t;
-
-/**
- * @brief Motor information structure
- *
- * This structure gathers useful information about motors and neccesary informations.
- */
-typedef struct {
-    uint16_t current;
-    uint16_t torque;
-    uint8_t rpm;
-} motor_curr_info_t;
-
-
-
-/**
- * @brief Common Motor driver data.
- *
- * This structure is common to all motor drivers and is expected to be the first element in
- * the driver's struct driver_data declaration.
- */
-struct motor_driver_data {
-	/** Servo Motor label */
-	motor_mode_t mode;
-	bool started;
-	k_tid_t ctrl_thread_tid;
-	motor_ctrl_info_t *ctrl_ptr;
-	motor_curr_info_t *info_ptr;
+struct motor_driver_config {
+	/** Physical device */
+	const struct device *phy;
+	/** CAN Bus device */
+	char canbus[12];
+	/** CAN TX ID */
+	uint32_t tx_id;
+	/** CAN RX ID */
+	uint32_t rx_id;
+	/** Gear Ratio */
+	double gear_ratio;
+	/** K_P */
+	double k_p;
+	/** K_I */
+	double k_i;
+	/** K_D */
+	double k_d;
 };
 
 /**
@@ -109,7 +113,7 @@ struct motor_driver_data {
  *
  * @see motor_init() for argument descriptions.
  */
-typedef int (*motor_api_start)();
+// typedef int (*motor_api_start)();
 
 /**
  * @typedef motor_get_status()
@@ -117,7 +121,7 @@ typedef int (*motor_api_start)();
  *
  * @see get_status() for argument descriptions.
  */
-typedef uint8_t (*motor_api_stat_speed)(const struct device *dev);
+typedef int16_t (*motor_api_stat_speed_t)(const struct device *dev);
 
 /**
  * @typedef motor_get_status()
@@ -125,7 +129,7 @@ typedef uint8_t (*motor_api_stat_speed)(const struct device *dev);
  *
  * @see get_status() for argument descriptions.
  */
-typedef uint8_t (*motor_api_stat_torque)(const struct device *dev);
+typedef int16_t (*motor_api_stat_torque_t)(const struct device *dev);
 
 /**
  * @typedef motor_set_speed()
@@ -133,16 +137,15 @@ typedef uint8_t (*motor_api_stat_torque)(const struct device *dev);
  *
  * @see get_status() for argument descriptions.
  */
-typedef int (*motor_api_speed)(const struct device *dev, int16_t speed_rpm, int16_t k_p, int16_t k_i, int16_t k_d);
+typedef int8_t (*motor_api_speed_t)(const struct device *dev, int16_t speed_rpm);
 
 /**
  * @brief Servo Motor driver API
  */
 __subsystem struct motor_driver_api {
-	motor_api_start motor_start;
-	motor_api_stat_speed motor_get_speed;
-	motor_api_stat_torque motor_get_torque;
-	motor_api_speed motor_set_speed;
+	motor_api_stat_speed_t motor_get_speed;
+	motor_api_stat_torque_t motor_get_torque;
+	motor_api_speed_t motor_set_speed;
 };
 
 /**
@@ -155,40 +158,6 @@ enum MotorError {
     MOTOR_ERROR_UNKNOWN = -3
 };
 
-/**
- * @brief Init
- *
- * This optional routine starts blinking a LED forever with the given time
- * period.
- *
- * @param dev Motor Device
- * @param ctrl_mode Control mode
- * @return 0 on success, negative on error
- */
-__syscall int motor_start();
-
-static inline int z_impl_motor_start()
-{
-	struct device *cans[CAN_COUNT];
-	//fdsafdsafdsa
-	for (int i = 0; i < CAN_COUNT; i++) {
-        cans[i] = DEVICE_DT_GET(DT_INST(i, can));
-        if (device_is_ready(cans[i])) {
-            LOG_INF("CAN device %d: %s\n", i, cans[i]->name);
-        } else {
-            LOG_ERR("CAN device %d not ready\n", i);
-        }
-    }
-	for (int i = 0; i < MOTOR_COUNT; i++) {
-        const struct device *dev = motor_devices[i];
-        if (dev) {
-			for(int j = 0; j < CAN_COUNT; j++) {
-				const struct device *can_dev = DEVICE_DT_GET(GET_CAN_CHANNEL(DT_NODELABEL(dev->name)));
-				if(can_dev == cans[j])
-					dev->data->common->ctrl_ptr = can_dev;
-        }
-    }
-}
 
 /**
  * @brief Get Torque
@@ -198,9 +167,9 @@ static inline int z_impl_motor_start()
  * @param dev Motor Device
  * @return the current torque
  */
-__syscall uint8_t motor_get_torque(const struct device *dev);
+__syscall int16_t motor_get_torque(const struct device *dev);
 
-static inline uint8_t z_impl_motor_get_torque(const struct device *dev)
+static inline int16_t z_impl_motor_get_torque(const struct device *dev)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -219,9 +188,9 @@ static inline uint8_t z_impl_motor_get_torque(const struct device *dev)
  * @param dev Motor Device
  * @return the current speed in RPM
  */
-__syscall uint8_t motor_get_speed(const struct device *dev);
+__syscall int16_t motor_get_speed(const struct device *dev);
 
-static inline uint8_t z_impl_motor_get_speed(const struct device *dev)
+static inline int16_t z_impl_motor_get_speed(const struct device *dev)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -241,17 +210,17 @@ static inline uint8_t z_impl_motor_get_speed(const struct device *dev)
  * @param dev Motor Device
  * @return 0 on success, negative on error
  */
-__syscall int motor_set_speed(const struct device *dev, int16_t speed_rpm, int16_t k_p, int16_t k_i, int16_t k_d);
+__syscall int8_t motor_set_speed(const struct device *dev, int16_t speed_rpm);
 
-static inline int z_impl_motor_set_speed(const struct device *dev, int16_t speed_rpm, int16_t k_p, int16_t k_i, int16_t k_d)
+static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t speed_rpm)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
 
-	if (api->motor_init == NULL) {
+	if (api->motor_set_speed == NULL) {
 		return -ENOSYS;
 	}
-	return api->motor_set_speed(dev, speed_rpm, k_p, k_i, k_d);
+	return api->motor_set_speed(dev, speed_rpm);
 }
 
 /**

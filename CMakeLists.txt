@@ -16,3 +16,13 @@
 
 set(ENV{ZEPHYR_BASE} "${CMAKE_CURRENT_SOURCE_DIR}/../zephyr")
 list(APPEND BOARD_ROOT .)
+
+# zephyr_library()
+zephyr_include_directories(include)
+zephyr_syscall_include_directories(include)
+add_subdirectory(drivers)
+# zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/include/zephyr/drivers/motor.h)
+# zephyr_library_sources(
+#     drivers/motor/motor_m3508.c
+#     drivers/motor/motor_dji.h
+#     )

@@ -9,6 +9,9 @@ FILE(GLOB app_sources src/*.c)
 
 include_directories(${ZEPHYR_BASE}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/dts)
 target_sources(app PRIVATE ${app_sources})
 target_include_directories(app PRIVATE ${ZEPHYR_BASE}/include)
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dts)
+

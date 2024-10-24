@@ -7,3 +7,19 @@
 
 # rsource "drivers/Kconfig"
 # rsource "lib/Kconfig"
+
+config MOTOR_M3508
+    bool "Enable MOTOR_M3508"
+    default n
+
+config MOTOR_LOG_LEVEL
+    int "Motor log level"
+    default 4
+    help
+      The log level of motor driver
+
+config MOTOR_INIT_PRIORITY
+    int "Motor init priority"
+    default 90
+    help
+      The init priority of motor driver
