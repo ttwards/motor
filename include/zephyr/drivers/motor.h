@@ -50,7 +50,7 @@
 
  */
  
-
+ 
 /**
  * @file
  * @brief General Servo Motor Interface
@@ -281,3 +281,46 @@ static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t sp
 #include <zephyr/syscalls/motor.h>
 
 #endif	/* ZEPHYR_INCLUDE_DRIVERS_MOTOR_H_ */
+
+/*
+                                                                                                                                                                                                       
+                                                                                                
+             I?`                                                                 ;]`            
+             ~Jn_'                                                             ,1zc"            
+             <YXYj<.                                                         ^[cYYv"            
+             <YXXYYt!                                                      '_uYXXXv"            
+             <YXXXXYX|;                                                  .<rYXXXXXv"            
+             <YXXXXXXYz1,                                               !fYYXXXXXXv"            
+             <YXXXXXXXXYv[^                                           I\XYXXXXXXXXv"            
+             <YXXXXXXXXXXYu-'                                       :)zYXXXXXXXXXXv"            
+             <YXXXXXXXXXXXXYx~.                                   ^}cYXXXXXXXXXXXXv"            
+             <YXXXXXXXXXXXXXYYfi                                '?uYXXXXXXXXXXXXXXv"            
+             <YXXXXXXXXXXXXXXXYX\I                            .~xYXXXXXXXXXXXXXXXXv"            
+             ~UXXXXXXXXXXXXXXXXXYz):                         ifYYXXXXXXXXXXXXXXXXXc"            
+             !zYXXXXXXXXXXXXXXXXXXYc}^                     l/XYXXXXXXXXXXXXXXXXXXUr`            
+              ;|XYXXXXXXXXXXXXXXXXXXYu?`                 :(XYXXXXXXXXXXXXXXXXXXYv]^             
+                !tYYXXXXXXXXXXXXXXXXXXYx+.             "{cYXXXXXXXXXXXXXXXXXXYc{"               
+                 .<jYXXXXXXXXXXXXXXXXXXYYj>          ^]cJYYYYYYYYYYYYYYYYYYYX(;                 
+                   '_nYXXXXXXXXXXXXXXXXXXYX/l       ,(rjjjjjjjjjjjjjjjjjjjj|l                   
+                     `]vYXXXXXXXXXXXXXXXXXXYX(:     ...                                         
+                       "{cYXXXXXXXXXXXXXXXXXXYc{"                                               
+                         :(XYXXXXXXXXXXXXXXXXXXYv]`                                             
+                           l/XYXXXXXXXXXXXXXXXXXXYn_'                                           
+                             >jYXXXXXXXXXXXXXXXXXXXYr<.                                         
+                              .+xYXXXXXXXXXXXXXXXXXXYYt!                                        
+                                `?uYXXXXXXXXXXXXXXXXXXYX|;                                      
+                                  ^}vXXXXXXXXXXXXXXXXXXXUz1"                                    
+                                    ^IllIIIIIIIIIIIIIIIIIl!^                                    
+                                                                                                
+                                                                                                
+    ^-_`     l??"  `+-; .~-,       "+)/\[!.   '+-?]]]?--!  :-_^      I-+'     !-! +]]?--]]>.    
+    <$%l   ;X@*\..)o$$f ^*$1     lYMoZJLpWht' ,M$kZZ0w@$C  \$$*).    v$$k[    U$C.zmZo$&ZZC_    
+    >$%l "r88x^ -w8Co$t ^*$1    >M$f"    lZ$Q',M$]  ?pBQi  \$*J8p?   c$ap$m+  U$C    x$m   .   
+    >$8!)#@Y; i0$$U'p$t ^*${    \$o       -$%:"M$['J$B{    \$b'Y$$O> ?#m.1o$JIY$C    n$w.       
+    <$@o$O> ;Y@#\v8aW$f ^#$|^^""Iq$Q~^..,{*@x.,W$[ iUBa)'  \$&h8c\#@Y;"]. `fW8M$L    n$w.       
+    >W&p? .|hWx"  iQ&&\ ^b&abbbv"'(w*hdbaoJ+  ,h&?   ~Z80< (&&0>  "rMa|.    :cW&Y    j&0.       
+    .,,.  'I;^      ,:`  ",:;;:.    "l<>I'    .,:'     ,I, ':,      ^:I.      ":^    `:"        
+                                                                                                
+
+
+ */
