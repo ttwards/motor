@@ -4,6 +4,53 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/***
+                                                                        ':l<-?--_-??_>l,'                                                                         
+                                                                   ,~}\tt/([??_+<++]]}(\t/\]i"                                                                    
+                                                               `~|jf{+l:` >]]x" }j[{~_1l;"l_)fr)i.                                                                
+                                                             >fv(!::<t}j1 -|t}. _/([{Untmv{?+l"~tv\I                                                              
+                                                           ?zx<'l|xcJ)<`;^;>~<~_-+<+~>!:>}}cci">``-un<                                                            
+                                                         ~Ux; ~cjL/+!;~}{}->!:^`""":I!_}{]<!'^jmXt;`<zcI                                                          
+                                                       'xC> !jvc{i^_|)~,.    ^>+.'I+)t- ';-(|<'IU0v|  ?0)                                                         
+                                                      ^Ln..[Lmj".]j?"    '+rm*ZCm*B$k)"     :{j+.!II]|.,Cn                                                        
+                                                     'Qx  I}x( ;u{'    ;rh$$$$@$$$$v   '.     "\f` (cz(.'Qn                                                       
+                                                     xQ  ]r(, !X!     \W$$$$$$$$$$$CxUwahn'     -c""f/(} "b]                                                      
+                                                    ;ai -CO|.^Y!     ($$$$$$$$$$$$$$$$$$$$~      }n ^(0n" )p.                                                     
+                                                    /q `rcc+ {r      U$$$$$$$$$$$$$$$$$$$p^       Y> +wZ+ "b>                                                     
+                                                    v0 .1mr" f-      >p@$$$$$&b#$$$@B$$$Q:        t1 ?zft. p{                                                     
+                                                    nZ "n|[^ \{       .>)tt(--raMbm1d&J_          n] }j|> .p]                                                     
+                                                    ?k`.~\v) <Y.           ')r|!'  ,)!           :U^'fuj_ >k"                                                     
+                                                    .w| ;z/Yi /t         (bdbwOcJwddqm!         'v] >ztt` YX                                                      
+                                                     ~k! +v\[. /t`       ._t}/k$$C)1/I         ;x[  "?t" }d,                                                      
+                                                      }pl '  .' +v?'      !Mn ($W:,pO.       "{x(^      ]p>                                                       
+                                                       ?m] .![O0OX}f};.    |@#8$$*8#l     'l)/_xBMz"" ./0!                                                        
+                                                        ;Yv>}b$$&|  i|(}<;` >fzYYc(" ."I+{|r+: +dWWh~<Ux`                                                         
+                                                          ?Xf)|j:"\{1hu;>-?[+}--?_+_]]?->, /MU~""I!rcc>                                                           
+                                                           .-nx?"lYMWkf' !zX[w-",,f?}Y?   ]w%nr?;{uti                                                             
+                                                              ;1xj1]l. ^)p$a%O!  ~8kw$C-' ;(]<1rr["                                                               
+                                                                 ,+(ff|{?])+Z:   >cr})|j]{\t/)<^                                                                  
+                                                                     `I+[{)rv//t//|\t/1{?<:'                                                                      
+                                                                             .'''''                                                                               
+                                                                                                                                                                  
+                                                                                                                                                                  
+                                                                          l+                                                                           "`         
+               _qZ+                                                       t$u.                                                                        fMq:        
+              I#$$|                                            .Il^       |$o'                                                .'              `l~vY+~U@$Br.       
+           `i\a$$$8}                '[rt{_"                  '/k%Bo-      Y$w           lnr["    `~+:                        [koz.           ;bB$$$@@$$$%X'       
+   .I>](nQb#@$$$aXxzQJt>            +$$$$$#c'              .?p$$$$$U  !jj-&B?           |$$$?    )$$o;",'                    Z$$L`>I.        1$$$$$$@@&Ofjnu\.    
+   1aWW*pLvZ$$BOYw&$$$$p             !)n0W$*]<i"        .;|b$$$$$$$L+L8$o#M} xk}       .x$$@u). 'J$$$W&8d:                  <&@clx$@a-       }8B8$$$$kmbMobJ}.    
+   .,:^ '_xM$$$ao$$$$$$0      .^;<?(trnJb%$a0pbx.       >nZp0Z%$$$$$#zb$8$u|dBp+   .1x0b%$$pXUrCh$$BYf)}<.                ^)#$$a@$&pY<        >X*$MOUQpW&C^       
+       lw$$$$*\no%X?o$$\    "Xbo#apQYXm$$B$8ml'.       `>(JqZa$$$$$XIx$$@$W0t!     .\z(}&$@c++rxQ$$8YLY"        :-{}1(/rXZ#$$@kLt~"       .>f0#W0r/cko%$8j.       
+     +L8Wqb&$Wk$$B|"W$@<    '<~!!>1umWBapo$$m;     iwqp*MkY|fa$$$$O.Y$&q8$|         `-um@$h. ]zwoZ*$$of`        /&$$@%*pQW$$#|~i;"`       :b%aZYzJYL0k@p<'";!I.   
+ .~fb80]^^{d$$8B$ol;B$#,      IQo@$$$$%M$@Q_       :jc/-: ,d$$$$$Wl ~[:;W$]       :O8Mhm$$m|\)\Z$B$$8v?>,`     ''l-]][]|Q@$mZ&$$B8Md\      ":"I+++[M$$$Mo8%@$*^   
+ IhBd~ ~qW$$*ZQ&$%Qn@$d.      "1jr{>va&ku<                ;cQxb$@)     n$m`       `fj,>$$W>^<Yh&WLxq%$$$BMmt' .<[nwaM&&#pc?.`[Yo$$$$W"      ;xXYJCJc0$$8zuvzc).   
+  ^:.  :tmkmXnQ$p]lQ$$p              '".                      "?~     ^#$?            ')|I    `:"   l)zmmt>:.     "I!l,'       `-JW&J^             }Z$$J          
+          .  ^O8c  ;rQ(                                              `U$$-                                                        ,,              ;bBBp!          
+              ^l"                                                    _@$&>                                                                         'li'           
+
+ */
+ 
+
 /**
  * @file
  * @brief General Servo Motor Interface
