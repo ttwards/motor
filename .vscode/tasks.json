@@ -1,0 +1,49 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build New",
+            "type": "shell",
+            "command": "west build -p always -b robomaster_board_c motor",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Build the Zephyr project"
+        },
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "west build -p always -b robomaster_board_c motor",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Build the Zephyr project"
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "west flash",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Flash the Zephyr project to the board"
+        },
+        {
+            "label": "Monitor",
+            "type": "shell",
+            "command": "pyocd rtt -t STM32F407IGHx",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Monitor via RTT Console"
+        }
+    ]
+}

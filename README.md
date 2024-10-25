@@ -1,6 +1,8 @@
 # Zephyr RTOS电机驱动
 ## 该项目希望以设备树形式描述机器人
 ### 最终的效果将如example.dts所示
+The structure is as shown below
+![structure](https://github.com/ttwards/motor/structure.png "Structure")
 目前我们仅完成了RM M3508电机的驱动
 ## TODO List
 - 完成RM M3508,M2006电机驱动 
@@ -11,7 +13,22 @@
 ## 如何在我的开发板上运行？（以Robomaster Developement Board C为例）
 ### Initialization
 
-The first step is to initialize the workspace folder (``my-workspace``) where
+First zephyr SDKs are needed.
+```shell
+sudo apt update
+sudo apt upgrade
+sudo apt install --no-install-recommends git cmake ninja-build gperf \
+  ccache dfu-util device-tree-compiler wget \
+  python3-dev python3-pip python3-setuptools python3-tk python3-wheel xz-utils file \
+  make gcc gcc-multilib g++-multilib libsdl2-dev libmagic1
+```
+### You should have a virtual environment if Python tells you to do so
+
+```shell
+pip install west
+```
+
+Then initialize the workspace folder (``my-workspace``) where
 the ``example-application`` and all Zephyr modules will be cloned. Run the following
 command:
 
@@ -22,6 +39,14 @@ west init -m https://github.com/ttwards/motor --mr master my-workspace
 cd my-workspace
 west update
 ```
+
+Then export a Zephyr CMake package. This allows CMake to automatically load boilerplate code required for building Zephyr applications.
+```shell
+west zephyr-export
+pip install -r ./zephyr/scripts/requirements.txt
+west sdk install
+```
+
 ### Building and running
 
 To build the application, run the following command:

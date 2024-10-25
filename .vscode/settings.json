@@ -1,0 +1,35 @@
+{
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "Build",
+            "task": "Build",
+            "tooltip": "Build the Zephyr project"
+        },
+        {
+            "label": "Flash",
+            "task": "Flash",
+            "tooltip": "Flash the Zephyr project to the board"
+        },
+        {
+            "label": "Monitor",
+            "task": "Monitor",
+            "tooltip": "Monitor via RTT Console"
+        }
+    ],
+    "files.associations": {
+        "device.h": "c",
+        "pwm.h": "c",
+        "kernel.h": "c",
+        "log_frontend.h": "c",
+        "gpio.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled",
+    "stm32-for-vscode.armToolchainPath": false,
+    "cortex-debug.variableUseNaturalFormat": true,
+    "terminal.integrated.defaultProfile.linux": "Zephyr IDE Terminal",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+    "cmake.configureOnOpen": false,
+    "zephyr-ide.use-zephyr-ide-json": true,
+    "zephyr-ide.projects": null,
+    "mcu-debug.rtos-views.showRTOS": false
+}
