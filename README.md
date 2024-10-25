@@ -46,3 +46,12 @@ Once you have built the application, run the following command to flash it:
 west flash
 ```
 If everything goes well, the LED on the board should be blinking
+
+Then you can have your motors running!
+
+```shell
+west build -p auto -b $BOARD motor 
+```
+You should have two motors set at 0x201 and 0x202, connected to CAN1.
+If everything goes well, you should see them at rpm 1222.
+The RPM is graphed via UART1
