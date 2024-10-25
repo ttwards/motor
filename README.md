@@ -80,3 +80,14 @@ west build -p auto -b $BOARD motor
 You should have two motors set at 0x201 and 0x202, connected to CAN1.
 If everything goes well, you should see them at rpm 1222.
 The RPM is graphed via UART1
+
+```
+好无聊逗逗梅总吧
+    嘬嘬嘬𐃆 ˒˒ ͏                               
+͏
+͏                             ╱|、
+                            (˚ˎ 。7 
+                            |、˜ 〵 
+                            じしˍ,_)ノ
+```
+
