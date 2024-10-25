@@ -27,6 +27,11 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 #define CANBUS_NODE DT_CHOSEN(zephyr_canbus)
 #define MOTOR1_NODE DT_INST(0, dji_m3508)
 #define MOTOR2_NODE DT_INST(1, dji_m3508)
+#define MOTOR3_NODE DT_INST(2, dji_m3508)
+#define MOTOR4_NODE DT_INST(3, dji_m3508)
+#define MOTOR5_NODE DT_INST(4, dji_m3508)
+#define MOTOR6_NODE DT_INST(5, dji_m3508)
+#define MOTOR7_NODE DT_INST(6, dji_m3508)
 
 #define CPU_NODE DT_NODELABEL(cpu0)
 
@@ -34,6 +39,12 @@ const struct device *cpu_dev = DEVICE_DT_GET(CPU_NODE);
 const struct device *can_dev = DEVICE_DT_GET(CANBUS_NODE);
 const struct device *motor1 = DEVICE_DT_GET(MOTOR1_NODE);
 const struct device *motor2 = DEVICE_DT_GET(MOTOR2_NODE);
+const struct device *motor3 = DEVICE_DT_GET(MOTOR3_NODE);
+const struct device *motor4 = DEVICE_DT_GET(MOTOR4_NODE);
+const struct device *motor5 = DEVICE_DT_GET(MOTOR5_NODE);
+const struct device *motor6 = DEVICE_DT_GET(MOTOR6_NODE);
+const struct device *motor7 = DEVICE_DT_GET(MOTOR7_NODE);
+
 
 k_tid_t feedback_tid = 0;
 
@@ -60,6 +71,11 @@ int main(void)
 	// 	printk("Error starting CAN controller (err %d)", err);
 	motor_set_speed(motor1, 1222);
 	motor_set_speed(motor2, 1222);
+	motor_set_speed(motor3, 1222);
+	motor_set_speed(motor4, 1222);
+	motor_set_speed(motor5, 1222);
+	motor_set_speed(motor6, 1222);
+	motor_set_speed(motor7, 1222);
 
 	/* Start Feedback thread*/
 	struct k_thread feedback_thread_data;

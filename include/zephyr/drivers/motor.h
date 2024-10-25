@@ -315,7 +315,7 @@ static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t sp
                                                                                                 
     ^-_`     l??"  `+-; .~-,       "+)/\[!.   '+-?]]]?--!  :-_^      I-+'     !-! +]]?--]]>.    
     <$%l   ;X@*\..)o$$f ^*$1     lYMoZJLpWht' ,M$kZZ0w@$C  \$$*).    v$$k[    U$C.zmZo$&ZZC_    
-    >$%l "r88x^ -w8Co$t ^*$1    >M$f"    lZ$Q',M$]  ?pBQi  \$*J8p?   c$ap$m+  U$C    x$m   .   
+    >$%l "r88x^ -w8Co$t ^*$1    >M$f"    lZ$Q',M$]  ?pBQi  \$*J8p?   c$ap$m+  U$C    x$m   .    
     >$8!)#@Y; i0$$U'p$t ^*${    \$o       -$%:"M$['J$B{    \$b'Y$$O> ?#m.1o$JIY$C    n$w.       
     <$@o$O> ;Y@#\v8aW$f ^#$|^^""Iq$Q~^..,{*@x.,W$[ iUBa)'  \$&h8c\#@Y;"]. `fW8M$L    n$w.       
     >W&p? .|hWx"  iQ&&\ ^b&abbbv"'(w*hdbaoJ+  ,h&?   ~Z80< (&&0>  "rMa|.    :cW&Y    j&0.       

@@ -309,7 +309,7 @@ static struct k_sem tx_queue_sem;
 struct can_frame txframe[CAN_COUNT][2];
 
 static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3) {
-    k_sem_init(&tx_queue_sem, 3, 3); // 初始化信号量
+    k_sem_init(&tx_queue_sem, 24, 24); // 初始化信号量
     struct device *can_dev = NULL;
     for (int i = 0; i < CAN_COUNT; i++) {
         can_dev = (struct device*) ctrl_struct[i].can_dev;
@@ -323,6 +323,7 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
     }
     int err = 0;
 
+    k_sleep(K_MSEC(500));
     while (1) {
         for (int8_t i = 0; i < CAN_COUNT; i++) {
             for(int j = 0; j < 8; j++) {
