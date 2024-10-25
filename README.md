@@ -17,7 +17,7 @@ command:
 
 ```shell
 # initialize my-workspace for the example-application (main branch)
-west init -m https://github.com/ttwards/motor --mr main my-workspace
+west init -m https://github.com/ttwards/motor --mr master my-workspace
 # update Zephyr modules
 cd my-workspace
 west update
