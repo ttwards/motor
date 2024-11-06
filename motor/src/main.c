@@ -38,12 +38,12 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 const struct device *cpu_dev = DEVICE_DT_GET(CPU_NODE);
 const struct device *can_dev = DEVICE_DT_GET(CANBUS_NODE);
 const struct device *motor1 = DEVICE_DT_GET(MOTOR1_NODE);
-const struct device *motor2 = DEVICE_DT_GET(MOTOR2_NODE);
-const struct device *motor3 = DEVICE_DT_GET(MOTOR3_NODE);
-const struct device *motor4 = DEVICE_DT_GET(MOTOR4_NODE);
-const struct device *motor5 = DEVICE_DT_GET(MOTOR5_NODE);
-const struct device *motor6 = DEVICE_DT_GET(MOTOR6_NODE);
-const struct device *motor7 = DEVICE_DT_GET(MOTOR7_NODE);
+// const struct device *motor2 = DEVICE_DT_GET(MOTOR2_NODE);
+// const struct device *motor3 = DEVICE_DT_GET(MOTOR3_NODE);
+// const struct device *motor4 = DEVICE_DT_GET(MOTOR4_NODE);
+// const struct device *motor5 = DEVICE_DT_GET(MOTOR5_NODE);
+// const struct device *motor6 = DEVICE_DT_GET(MOTOR6_NODE);
+// const struct device *motor7 = DEVICE_DT_GET(MOTOR7_NODE);
 
 
 k_tid_t feedback_tid = 0;
@@ -52,7 +52,7 @@ k_tid_t feedback_tid = 0;
 K_THREAD_STACK_DEFINE(feedback_stack_area, 4096); // 定义线程栈
 void console_feedback(void *arg1, void *arg2, void *arg3) {
 	while (1) {
-		LOG_INF("rpm: motor1:%d\tmotor2:%d\n", motor_get_speed(motor1), motor_get_speed(motor2));
+		LOG_INF("rpm: motor1:%d\n", motor_get_speed(motor1));
 		k_msleep(280);
 	}
 }
@@ -69,13 +69,13 @@ int main(void)
 	// err = can_start(can_dev);
 	// if (err != 0)
 	// 	printk("Error starting CAN controller (err %d)", err);
-	motor_set_speed(motor1, 1222);
-	motor_set_speed(motor2, 1222);
-	motor_set_speed(motor3, 1222);
-	motor_set_speed(motor4, 1222);
-	motor_set_speed(motor5, 1222);
-	motor_set_speed(motor6, 1222);
-	motor_set_speed(motor7, 1222);
+	motor_set_torque(motor1, 1);
+	// motor_set_speed(motor2, 1222);
+	// motor_set_speed(motor3, 1222);
+	// motor_set_speed(motor4, 1222);
+	// motor_set_speed(motor5, 1222);
+	// motor_set_speed(motor6, 1222);
+	// motor_set_speed(motor7, 1222);
 
 	/* Start Feedback thread*/
 	struct k_thread feedback_thread_data;

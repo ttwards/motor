@@ -16,14 +16,13 @@
 #include <zephyr/drivers/motor.h>
 #include "motor_dji.h"
 
-#define DT_DRV_COMPAT dji_m3508
+#define DT_DRV_COMPAT dji_gm6020
 
 
 static const struct motor_driver_api motor_api_funcs = {
     .motor_get_speed = dji_get_speed,
     .motor_set_speed = dji_set_speed,
-    .motor_set_torque = dji_set_torque,
-    .motor_set_angle = dji_set_angle,
+    // .motor_set_torque = dji_set_torque,
     .motor_get_torque = dji_get_torque,
 };
 

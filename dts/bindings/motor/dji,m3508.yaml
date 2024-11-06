@@ -1,3 +1,7 @@
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
 description: DJI M3508 Motor
 
 compatible: "dji,m3508"
@@ -19,12 +23,9 @@ properties:
     required: true
   label:
     type: string
-  k_p:
-    type: int
+  capabilities:
+    type: uint8-array
     required: true
-  k_i:
-    type: int
-    required: true
-  k_d:  
-    type: int
+  controllers:
+    type: phandles
     required: true

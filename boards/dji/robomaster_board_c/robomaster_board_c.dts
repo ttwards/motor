@@ -66,86 +66,56 @@
 				can_device = <&can2>;
 		};
 	};
-    motor {
+    rm_motor {
 		motor0: motor0{
 			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
 			tx_addr = <0x200>;
 			rx_addr = <0x201>;
 			gear_ratio = <1900>;
 			label = "Motor0";
 			status = "okay";
 			can_channel = <&canbus1>;
+			controllers = <&angle_pid &speed_pid &torque_pid>;
+			capabilities = [00 01 02];
 		};
 
-		motor1: motor1{
-			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
-			tx_addr = <0x200>;
-			rx_addr = <0x202>;
-			gear_ratio = <1900>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-		};
-
-		motor2: motor2{
-			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
-			tx_addr = <0x200>;
-			rx_addr = <0x203>;
-			gear_ratio = <1900>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-		};
-
-		motor3: motor3{
-			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
-			tx_addr = <0x200>;
-			rx_addr = <0x204>;
-			gear_ratio = <1900>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-		};
-
-		motor4: motor4{
-			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
-			tx_addr = <0x200>;
-			rx_addr = <0x205>;
-			gear_ratio = <1900>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-		};
-
-		motor5: motor5{
-			compatible = "dji,m3508";
-			k_p = <100>;
-			k_i = <10000>;
-			k_d = <3000>;
-			tx_addr = <0x200>;
-			rx_addr = <0x206>;
-			gear_ratio = <1900>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-		};
+		// motor1: motor1{
+		// 	compatible = "dji,gm6020";
+		// 	k_p = <100>;
+		// 	k_i = <10000>;
+		// 	k_d = <3000>;
+		// 	tx_addr = <0x1FF>;
+		// 	rx_addr = <0x202>;
+		// 	gear_ratio = <1900>;
+		// 	label = "Motor0";
+		// 	status = "okay";
+		// 	can_channel = <&canbus1>;
+		// };
 	};
 
+	pid {
+		torque_pid: torque_pid {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <100>;
+			k_i = <0>;
+			k_d = <0>;
+		};
+		angle_pid: angle_pid {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <100>;
+			k_i = <0>;
+			k_d = <0>;
+		};
+		speed_pid: speed_pid {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <100>;
+			k_i = <0>;
+			k_d = <0>;
+		};
+	};
 };
 
 &clk_lsi {

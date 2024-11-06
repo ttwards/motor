@@ -68,6 +68,7 @@
  * @{
  */
 
+#include <sys/_intsup.h>
 #include <zephyr/kernel.h>
 #include "zephyr/logging/log_core.h"
 #include <zephyr/kernel/thread.h>
@@ -86,8 +87,9 @@
 extern "C" {
 #endif
 
-#define MOTOR_TORQUE_CTRL BIT(0)
-#define MOTOR_SPEED_CTRL BIT(1)
+#define MOTOR_MODE_ANGLE 0
+#define MOTOR_MODE_SPEED 1
+#define MOTOR_MODE_TORQUE 2
 
 #define MOTOR_DT_DRIVER_DATA_INST_GET(inst) {0}
 
@@ -102,6 +104,10 @@ extern "C" {
 
 #define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) \
 	MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
+
+#define GET_CONTROLLER_STRUCT(node_id, prop, idx) \
+	DEVICE_DT_GET(DT_PROP_BY_IDX(node_id, prop, idx))
+
 /**
  * @brief Static initializer for @p motor_driver_config struct
  *
@@ -113,10 +119,10 @@ extern "C" {
 		.canbus = DT_DRIVER_GET_CANBUS_NAME(node_id), \
 		.tx_id = DT_PROP(node_id, tx_addr), \
 		.rx_id = DT_PROP(node_id, rx_addr), \
-		.k_p = DT_PROP(node_id, k_p) / 100.0, \
-		.k_i = DT_PROP(node_id, k_i) / 100.0, \
-		.k_d = DT_PROP(node_id, k_d) / 100.0, \
 		.gear_ratio = (double) DT_PROP(node_id, gear_ratio) / 100.0, \
+		.compat = DT_PROP(node_id, compatible), \
+		.controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT, (,))}, \
+		.capabilities = DT_PROP(node_id, capabilities), \
 	}
 
 #define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)   \
@@ -128,7 +134,6 @@ extern "C" {
 			 prio, api, __VA_ARGS__)
 
 typedef uint8_t motor_mode_t;
-
 
 struct motor_driver_data {
 	/** Motor control mode */
@@ -146,21 +151,10 @@ struct motor_driver_config {
 	uint32_t rx_id;
 	/** Gear Ratio */
 	double gear_ratio;
-	/** K_P */
-	double k_p;
-	/** K_I */
-	double k_i;
-	/** K_D */
-	double k_d;
+	char compat[16];
+	uint8_t capabilities[4];
+	struct device *controller[4];
 };
-
-/**
- * @typedef motor_init()
- * @brief Callback API for initializing motor control mode
- *
- * @see motor_init() for argument descriptions.
- */
-// typedef int (*motor_api_start)();
 
 /**
  * @typedef motor_get_status()
@@ -184,7 +178,24 @@ typedef int16_t (*motor_api_stat_torque_t)(const struct device *dev);
  *
  * @see get_status() for argument descriptions.
  */
-typedef int8_t (*motor_api_speed_t)(const struct device *dev, int16_t speed_rpm);
+typedef int16_t (*motor_api_speed_t)(const struct device *dev, int16_t speed_rpm);
+
+/**
+ * @typedef motor_set_torque()
+ * @brief Callback API returning motor status
+ *
+ * @see get_status() for argument descriptions.
+ */
+typedef int16_t (*motor_api_torque_t)(const struct device *dev, int16_t torque);
+
+/**
+ * @typedef motor_set_angle()
+ * @brief Callback API returning motor status
+ *
+ * @see get_status() for argument descriptions.
+ */
+typedef int16_t (*motor_api_angle_t)(const struct device *dev, int16_t angle);
+
 
 /**
  * @brief Servo Motor driver API
@@ -193,6 +204,8 @@ __subsystem struct motor_driver_api {
 	motor_api_stat_speed_t motor_get_speed;
 	motor_api_stat_torque_t motor_get_torque;
 	motor_api_speed_t motor_set_speed;
+	motor_api_torque_t motor_set_torque;
+	motor_api_angle_t motor_set_angle;
 };
 
 /**
@@ -271,6 +284,50 @@ static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t sp
 }
 
 /**
+ * @brief Get Status
+ *
+ * This optional routine starts blinking a LED forever with the given time
+ * period.
+ *
+ * @param dev Motor Device
+ * @return 0 on success, negative on error
+ */
+__syscall int8_t motor_set_angle(const struct device *dev, int16_t angle);
+
+static inline int8_t z_impl_motor_set_angle(const struct device *dev, int16_t angle)
+{
+	const struct motor_driver_api *api =
+		(const struct motor_driver_api *)dev->api;
+
+	if (api->motor_set_angle == NULL) {
+		return -ENOSYS;
+	}
+	return api->motor_set_angle(dev, angle);
+}
+
+/**
+ * @brief Get Status
+ *
+ * This optional routine starts blinking a LED forever with the given time
+ * period.
+ *
+ * @param dev Motor Device
+ * @return 0 on success, negative on error
+ */
+__syscall int8_t motor_set_torque(const struct device *dev, int16_t torque);
+
+static inline int8_t z_impl_motor_set_torque(const struct device *dev, int16_t torque)
+{
+  const struct motor_driver_api *api =
+    (const struct motor_driver_api *)dev->api;
+
+  if (api->motor_set_torque == NULL) {
+    return -ENOSYS;
+  }
+  return api->motor_set_torque(dev, torque);
+}
+
+/**
  * @}
  */
 
@@ -281,46 +338,3 @@ static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t sp
 #include <zephyr/syscalls/motor.h>
 
 #endif	/* ZEPHYR_INCLUDE_DRIVERS_MOTOR_H_ */
-
-/*
-                                                                                                                                                                                                       
-                                                                                                
-             I?`                                                                 ;]`            
-             ~Jn_'                                                             ,1zc"            
-             <YXYj<.                                                         ^[cYYv"            
-             <YXXYYt!                                                      '_uYXXXv"            
-             <YXXXXYX|;                                                  .<rYXXXXXv"            
-             <YXXXXXXYz1,                                               !fYYXXXXXXv"            
-             <YXXXXXXXXYv[^                                           I\XYXXXXXXXXv"            
-             <YXXXXXXXXXXYu-'                                       :)zYXXXXXXXXXXv"            
-             <YXXXXXXXXXXXXYx~.                                   ^}cYXXXXXXXXXXXXv"            
-             <YXXXXXXXXXXXXXYYfi                                '?uYXXXXXXXXXXXXXXv"            
-             <YXXXXXXXXXXXXXXXYX\I                            .~xYXXXXXXXXXXXXXXXXv"            
-             ~UXXXXXXXXXXXXXXXXXYz):                         ifYYXXXXXXXXXXXXXXXXXc"            
-             !zYXXXXXXXXXXXXXXXXXXYc}^                     l/XYXXXXXXXXXXXXXXXXXXUr`            
-              ;|XYXXXXXXXXXXXXXXXXXXYu?`                 :(XYXXXXXXXXXXXXXXXXXXYv]^             
-                !tYYXXXXXXXXXXXXXXXXXXYx+.             "{cYXXXXXXXXXXXXXXXXXXYc{"               
-                 .<jYXXXXXXXXXXXXXXXXXXYYj>          ^]cJYYYYYYYYYYYYYYYYYYYX(;                 
-                   '_nYXXXXXXXXXXXXXXXXXXYX/l       ,(rjjjjjjjjjjjjjjjjjjjj|l                   
-                     `]vYXXXXXXXXXXXXXXXXXXYX(:     ...                                         
-                       "{cYXXXXXXXXXXXXXXXXXXYc{"                                               
-                         :(XYXXXXXXXXXXXXXXXXXXYv]`                                             
-                           l/XYXXXXXXXXXXXXXXXXXXYn_'                                           
-                             >jYXXXXXXXXXXXXXXXXXXXYr<.                                         
-                              .+xYXXXXXXXXXXXXXXXXXXYYt!                                        
-                                `?uYXXXXXXXXXXXXXXXXXXYX|;                                      
-                                  ^}vXXXXXXXXXXXXXXXXXXXUz1"                                    
-                                    ^IllIIIIIIIIIIIIIIIIIl!^                                    
-                                                                                                
-                                                                                                
-    ^-_`     l??"  `+-; .~-,       "+)/\[!.   '+-?]]]?--!  :-_^      I-+'     !-! +]]?--]]>.    
-    <$%l   ;X@*\..)o$$f ^*$1     lYMoZJLpWht' ,M$kZZ0w@$C  \$$*).    v$$k[    U$C.zmZo$&ZZC_    
-    >$%l "r88x^ -w8Co$t ^*$1    >M$f"    lZ$Q',M$]  ?pBQi  \$*J8p?   c$ap$m+  U$C    x$m   .    
-    >$8!)#@Y; i0$$U'p$t ^*${    \$o       -$%:"M$['J$B{    \$b'Y$$O> ?#m.1o$JIY$C    n$w.       
-    <$@o$O> ;Y@#\v8aW$f ^#$|^^""Iq$Q~^..,{*@x.,W$[ iUBa)'  \$&h8c\#@Y;"]. `fW8M$L    n$w.       
-    >W&p? .|hWx"  iQ&&\ ^b&abbbv"'(w*hdbaoJ+  ,h&?   ~Z80< (&&0>  "rMa|.    :cW&Y    j&0.       
-    .,,.  'I;^      ,:`  ",:;;:.    "l<>I'    .,:'     ,I, ':,      ^:I.      ":^    `:"        
-                                                                                                
-
-
- */

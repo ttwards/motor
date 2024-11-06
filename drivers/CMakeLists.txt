@@ -6,3 +6,4 @@
 # add_definitions(-D__ZEPHYR_SUPERVISOR__)
 
 add_subdirectory_ifdef(CONFIG_MOTOR_M3508 motor)
+add_subdirectory_ifdef(CONFIG_MOTOR_M3508 pid)
