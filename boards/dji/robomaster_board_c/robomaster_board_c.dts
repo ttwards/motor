@@ -71,12 +71,12 @@
 			compatible = "dji,m3508";
 			tx_addr = <0x200>;
 			rx_addr = <0x201>;
-			gear_ratio = <1900>;
+			gear_ratio = <1920>;
 			label = "Motor0";
 			status = "okay";
 			can_channel = <&canbus1>;
-			controllers = <&angle_pid &speed_pid &torque_pid>;
-			capabilities = [00 01 02];
+			controllers = <&angle_pid &speed_pid>;
+			capabilities = [00 01];
 		};
 
 		// motor1: motor1{
@@ -94,26 +94,21 @@
 	};
 
 	pid {
-		torque_pid: torque_pid {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <100>;
-			k_i = <0>;
-			k_d = <0>;
-		};
 		angle_pid: angle_pid {
 			#controller-cells = <0>;
 			compatible = "pid,single";
+			input = "angle";
 			k_p = <100>;
-			k_i = <0>;
-			k_d = <0>;
+			k_i = <10>;
+			k_d = <10>;
 		};
 		speed_pid: speed_pid {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			k_p = <100>;
-			k_i = <0>;
-			k_d = <0>;
+			input = "speed";
+			k_p = <80>;
+			k_i = <20>;
+			k_d = <20>;
 		};
 	};
 };

@@ -7,8 +7,6 @@
 #define PID_SINGLE_H
 
 #include "zephyr/devicetree.h"
-#include "zephyr/drivers/counter.h"
-#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -19,11 +17,15 @@
 
 #define DT_DRV_COMPAT pid_single
 
-#define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                               \
-  {                                                                            \
-    .k_p = DT_PROP(node_id, k_p) / 100.0,                                      \
-    .k_i = DT_PROP(node_id, k_i) / 100.0,                                      \
-    .k_d = DT_PROP(node_id, k_d) / 100.0,                                      \
+#include "zephyr/logging/log.h"
+LOG_MODULE_REGISTER(pid, CONFIG_MOTOR_LOG_LEVEL);
+
+#define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)    \
+  {                                                 \
+    .k_p = DT_PROP(node_id, k_p) / 10000.0f,         \
+    .k_i = DT_PROP(node_id, k_i) / 100.0f,          \
+    .k_d = DT_PROP(node_id, k_d) / 100.0f,          \
+    .input = DT_PROP(node_id, input),               \
   }
 
 #include <limits.h>
@@ -47,8 +49,10 @@ static int16_t to16t(float value) {
   }
 }
 
+bool float_equal(float a, float b) { return fabsf(a - b) < 0.0001f; }
+
 static void single_pid_calc(const struct device *pid_dev) {
-  struct pid_single_driver_config *pid_para = pid_dev->config;
+  const struct pid_single_driver_config *pid_para = pid_dev->config;
   struct pid_single_driver_data *pid_data = pid_dev->data;
   if (pid_data->curr == NULL) {
     return;
@@ -56,18 +60,24 @@ static void single_pid_calc(const struct device *pid_dev) {
   float kp = pid_para->k_p;
   float ki = pid_para->k_i;
   float kd = pid_para->k_d;
-  float err = (float)(*(pid_data->curr) - *(pid_data->ref));
+  float err = *(pid_data->ref) - *(pid_data->curr);
   float deltaT =
-      k_ticks_to_us_near64(*(pid_data->curr_time) - *(pid_data->prev_time));
-  pid_data->err_integral += err * deltaT;
-  pid_data->err_derivate = 1000000 * err / deltaT;
-  *(pid_data->output) = to16t(
-      kp * (err + ki * pid_data->err_integral + kd * pid_data->err_derivate));
+      k_cyc_to_us_near32(*(pid_data->curr_time) - *(pid_data->prev_time));
+  float delta_i = (err * deltaT) / (1000000 * ki);
+  float delta_d = kd * err / deltaT;
+  if (!float_equal(ki, 0))
+    pid_data->err_integral += delta_i;
+  if (!float_equal(kd, 0))
+    pid_data->err_derivate = delta_d;
+//   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
+//           to16t(kd * 1000000 * err / deltaT));
+  *(pid_data->output) =
+      kp * (err + pid_data->err_integral + pid_data->err_derivate);
   return;
 }
 
-static void single_pid_reg_input(const struct device *pid_dev, int16_t *curr,
-                                 int16_t *ref) {
+static void single_pid_reg_input(const struct device *pid_dev, float *curr,
+                                 float *ref) {
   struct pid_single_driver_data *pid_data = pid_dev->data;
   pid_data->curr = curr;
   pid_data->ref = ref;
@@ -75,7 +85,7 @@ static void single_pid_reg_input(const struct device *pid_dev, int16_t *curr,
 }
 
 static void single_pid_reg_time(const struct device *pid_dev,
-                                uint64_t *curr_time, uint64_t *prev_time) {
+                                uint32_t *curr_time, uint32_t *prev_time) {
   struct pid_single_driver_data *pid_data = pid_dev->data;
   pid_data->curr_time = curr_time;
   pid_data->prev_time = prev_time;
@@ -83,7 +93,7 @@ static void single_pid_reg_time(const struct device *pid_dev,
 }
 
 static void single_pid_reg_output(const struct device *pid_dev,
-                                  int16_t *output) {
+                                  float *output) {
   struct pid_single_driver_data *pid_data = pid_dev->data;
   pid_data->output = output;
   return;

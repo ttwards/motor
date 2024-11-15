@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <zephyr/device.h>
-#include <errno.h>
 
 // TODO: PID, ADRC, FSF, LQR, MPC, etc.
 
@@ -23,19 +22,21 @@ extern "C" {
                    __VA_ARGS__)
 
 struct pid_single_driver_config {
-  double k_p;
-  double k_i;
-  double k_d;
+  float k_p;
+  float k_i;
+  float k_d;
+  char input[16];
 };
 
 struct pid_single_driver_data {
-  int16_t *ref;
-  int16_t *curr;
+  float *ref;
+  float *curr;
   float err_integral;
   float err_derivate;
-  int64_t *curr_time;
-  int64_t *prev_time;
-  int16_t *output;
+  float ratio;
+  int32_t *curr_time;
+  int32_t *prev_time;
+  float *output;
 };
 
 /**
@@ -48,11 +49,13 @@ typedef void (*pid_api_calc_t)(const struct device *dev);
 
 // typedef int32_t (*pid_api_addr_t)(const struct device *dev);
 
-typedef void (*pid_api_reg_input_t)(const struct device *dev, int16_t *curr, int16_t *ref);
+typedef void (*pid_api_reg_input_t)(const struct device *dev, float *curr,
+                                    float *ref);
 
-typedef void (*pid_api_reg_time_t)(const struct device *dev, uint64_t *curr_time, uint64_t *prev_time);
+typedef void (*pid_api_reg_time_t)(const struct device *dev,
+                                   uint32_t *curr_time, uint32_t *prev_time);
 
-typedef void (*pid_api_reg_output_t)(const struct device *dev, int16_t *output);
+typedef void (*pid_api_reg_output_t)(const struct device *dev, float *output);
 
 /**
  * @brief Servo Motor driver API
@@ -67,52 +70,47 @@ __subsystem struct pid_driver_api {
 
 __syscall void pid_calc(const struct device *dev);
 
-static inline void z_impl_pid_calc(const struct device *dev)
-{
-  const struct pid_driver_api *api =
-    (const struct pid_driver_api *)dev->api;
+static inline void z_impl_pid_calc(const struct device *dev) {
+  const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
 
   if (api->pid_calc != NULL) {
     api->pid_calc(dev);
   }
 }
-__syscall void pid_reg_input(const struct device *dev, int16_t *curr, int16_t *ref);
+__syscall void pid_reg_input(const struct device *dev, float *curr, float *ref);
 
-static inline void z_impl_pid_reg_input(const struct device *dev, int16_t *curr, int16_t *ref)
-{
-  const struct pid_driver_api *api =
-    (const struct pid_driver_api *)dev->api;
+static inline void z_impl_pid_reg_input(const struct device *dev, float *curr,
+                                        float *ref) {
+  const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
 
   if (api->pid_reg_input != NULL) {
     api->pid_reg_input(dev, curr, ref);
   }
 }
 
-__syscall void pid_reg_time(const struct device *dev, uint64_t *curr_time, uint64_t *prev_time);
+__syscall void pid_reg_time(const struct device *dev, uint32_t *curr_time,
+                            uint32_t *prev_time);
 
-static inline void z_impl_pid_reg_time(const struct device *dev, uint64_t *curr_time, uint64_t *prev_time)
-{
-  const struct pid_driver_api *api =
-    (const struct pid_driver_api *)dev->api;
+static inline void z_impl_pid_reg_time(const struct device *dev,
+                                       uint32_t *curr_time,
+                                       uint32_t *prev_time) {
+  const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
 
   if (api->pid_reg_time != NULL) {
     api->pid_reg_time(dev, curr_time, prev_time);
   }
 }
 
-__syscall void pid_reg_output(const struct device *dev, int16_t *output);
+__syscall void pid_reg_output(const struct device *dev, float *output);
 
-static inline void z_impl_pid_reg_output(const struct device *dev, int16_t *output)
-{
-  const struct pid_driver_api *api =
-    (const struct pid_driver_api *)dev->api;
+static inline void z_impl_pid_reg_output(const struct device *dev,
+                                         float *output) {
+  const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
 
   if (api->pid_reg_output != NULL) {
     api->pid_reg_output(dev, output);
   }
 }
-
-
 
 #ifdef __cplusplus
 }

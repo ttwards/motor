@@ -14,7 +14,7 @@
 #include <zephyr/drivers/can.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/motor.h>
-#include "motor_dji.h"
+#include "motor_dji.c"
 
 #define DT_DRV_COMPAT dji_gm6020
 

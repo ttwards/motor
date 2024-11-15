@@ -130,7 +130,7 @@ void console_feedback(void *arg1, void *arg2, void *arg3) {
 	while (1) {
 		thread_analyzer_print(NULL);
 		// printk("rx data:  ");
-		// printk("angle:%.1f deg\t", (double)(Motors[0].angle) / 8191 * 360);
+		// printk("angle:%.1f deg\t", (float)(Motors[0].angle) / 8191 * 360);
 		// printk("rpm:%d\t", Motors[0].speed);
 		// printk("current:%d\t", Motors[0].torque_current);
 		// printk("temp:%d\n",Motors[0].temperature);

@@ -119,7 +119,6 @@ extern "C" {
 		.canbus = DT_DRIVER_GET_CANBUS_NAME(node_id), \
 		.tx_id = DT_PROP(node_id, tx_addr), \
 		.rx_id = DT_PROP(node_id, rx_addr), \
-		.gear_ratio = (double) DT_PROP(node_id, gear_ratio) / 100.0, \
 		.compat = DT_PROP(node_id, compatible), \
 		.controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT, (,))}, \
 		.capabilities = DT_PROP(node_id, capabilities), \
@@ -150,7 +149,6 @@ struct motor_driver_config {
 	/** CAN RX ID */
 	uint32_t rx_id;
 	/** Gear Ratio */
-	double gear_ratio;
 	char compat[16];
 	uint8_t capabilities[4];
 	struct device *controller[4];
@@ -162,7 +160,7 @@ struct motor_driver_config {
  *
  * @see get_status() for argument descriptions.
  */
-typedef int16_t (*motor_api_stat_speed_t)(const struct device *dev);
+typedef float (*motor_api_stat_speed_t)(const struct device *dev);
 
 /**
  * @typedef motor_get_status()
@@ -170,7 +168,15 @@ typedef int16_t (*motor_api_stat_speed_t)(const struct device *dev);
  *
  * @see get_status() for argument descriptions.
  */
-typedef int16_t (*motor_api_stat_torque_t)(const struct device *dev);
+typedef float (*motor_api_stat_torque_t)(const struct device *dev);
+
+/**
+ * @typedef motor_get_status()
+ * @brief Callback API returning motor status
+ *
+ * @see get_status() for argument descriptions.
+ */
+typedef float (*motor_api_stat_angle_t)(const struct device *dev);
 
 /**
  * @typedef motor_set_speed()
@@ -178,7 +184,7 @@ typedef int16_t (*motor_api_stat_torque_t)(const struct device *dev);
  *
  * @see get_status() for argument descriptions.
  */
-typedef int16_t (*motor_api_speed_t)(const struct device *dev, int16_t speed_rpm);
+typedef int8_t (*motor_api_speed_t)(const struct device *dev, float speed_rpm);
 
 /**
  * @typedef motor_set_torque()
@@ -186,7 +192,7 @@ typedef int16_t (*motor_api_speed_t)(const struct device *dev, int16_t speed_rpm
  *
  * @see get_status() for argument descriptions.
  */
-typedef int16_t (*motor_api_torque_t)(const struct device *dev, int16_t torque);
+typedef int8_t (*motor_api_torque_t)(const struct device *dev, float torque);
 
 /**
  * @typedef motor_set_angle()
@@ -194,7 +200,7 @@ typedef int16_t (*motor_api_torque_t)(const struct device *dev, int16_t torque);
  *
  * @see get_status() for argument descriptions.
  */
-typedef int16_t (*motor_api_angle_t)(const struct device *dev, int16_t angle);
+typedef int8_t (*motor_api_angle_t)(const struct device *dev, float angle);
 
 
 /**
@@ -203,6 +209,7 @@ typedef int16_t (*motor_api_angle_t)(const struct device *dev, int16_t angle);
 __subsystem struct motor_driver_api {
 	motor_api_stat_speed_t motor_get_speed;
 	motor_api_stat_torque_t motor_get_torque;
+    motor_api_stat_torque_t motor_get_angle;
 	motor_api_speed_t motor_set_speed;
 	motor_api_torque_t motor_set_torque;
 	motor_api_angle_t motor_set_angle;
@@ -227,9 +234,9 @@ enum MotorError {
  * @param dev Motor Device
  * @return the current torque
  */
-__syscall int16_t motor_get_torque(const struct device *dev);
+__syscall float motor_get_torque(const struct device *dev);
 
-static inline int16_t z_impl_motor_get_torque(const struct device *dev)
+static inline float z_impl_motor_get_torque(const struct device *dev)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -248,9 +255,9 @@ static inline int16_t z_impl_motor_get_torque(const struct device *dev)
  * @param dev Motor Device
  * @return the current speed in RPM
  */
-__syscall int16_t motor_get_speed(const struct device *dev);
+__syscall float motor_get_speed(const struct device *dev);
 
-static inline int16_t z_impl_motor_get_speed(const struct device *dev)
+static inline float z_impl_motor_get_speed(const struct device *dev)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -259,6 +266,19 @@ static inline int16_t z_impl_motor_get_speed(const struct device *dev)
 		return -ENOSYS;
 	}
 	return api->motor_get_speed(dev);
+}
+
+__syscall float motor_get_angle(const struct device *dev);
+
+static inline float z_impl_motor_get_angle(const struct device *dev)
+{
+    const struct motor_driver_api *api =
+        (const struct motor_driver_api *)dev->api;
+
+    if (api->motor_get_angle == NULL) {
+        return -ENOSYS;
+    }
+    return api->motor_get_angle(dev);
 }
 
 /**
@@ -270,9 +290,9 @@ static inline int16_t z_impl_motor_get_speed(const struct device *dev)
  * @param dev Motor Device
  * @return 0 on success, negative on error
  */
-__syscall int8_t motor_set_speed(const struct device *dev, int16_t speed_rpm);
+__syscall int8_t motor_set_speed(const struct device *dev, float speed_rpm);
 
-static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t speed_rpm)
+static inline int8_t z_impl_motor_set_speed(const struct device *dev, float speed_rpm)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -292,9 +312,9 @@ static inline int8_t z_impl_motor_set_speed(const struct device *dev, int16_t sp
  * @param dev Motor Device
  * @return 0 on success, negative on error
  */
-__syscall int8_t motor_set_angle(const struct device *dev, int16_t angle);
+__syscall int8_t motor_set_angle(const struct device *dev, float angle);
 
-static inline int8_t z_impl_motor_set_angle(const struct device *dev, int16_t angle)
+static inline int8_t z_impl_motor_set_angle(const struct device *dev, float angle)
 {
 	const struct motor_driver_api *api =
 		(const struct motor_driver_api *)dev->api;
@@ -314,9 +334,9 @@ static inline int8_t z_impl_motor_set_angle(const struct device *dev, int16_t an
  * @param dev Motor Device
  * @return 0 on success, negative on error
  */
-__syscall int8_t motor_set_torque(const struct device *dev, int16_t torque);
+__syscall int8_t motor_set_torque(const struct device *dev, float torque);
 
-static inline int8_t z_impl_motor_set_torque(const struct device *dev, int16_t torque)
+static inline int8_t z_impl_motor_set_torque(const struct device *dev, float torque)
 {
   const struct motor_driver_api *api =
     (const struct motor_driver_api *)dev->api;

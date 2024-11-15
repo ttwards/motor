@@ -2,17 +2,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build New",
-            "type": "shell",
-            "command": "west build -p always -b robomaster_board_c motor",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "problemMatcher": ["$gcc"],
-            "detail": "Build the Zephyr project"
-        },
-        {
             "label": "Build",
             "type": "shell",
             "command": "west build -p always -b robomaster_board_c motor",
@@ -33,6 +22,17 @@
             },
             "problemMatcher": [],
             "detail": "Flash the Zephyr project to the board"
+        },
+        {
+            "label": "Tidy",
+            "type": "shell",
+            "command": "west build -t tidy",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Tidy up codes"
         },
         {
             "label": "Monitor",

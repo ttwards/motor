@@ -12,12 +12,13 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-                "interface/stlink.cfg",
-                "target/stm32f4x.cfg"
+                // "interface/stlink.cfg",
+                // "target/stm32f4x.cfg"
+                "esp32dap.cfg"
             ],
             "svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
             "preRestartCommands": [
-                "monitor reset halt"
+                // "monitor reset halt"
             ],
             "gdbPath": "${userHome}/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
             "liveWatch": {

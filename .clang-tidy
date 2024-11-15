@@ -1,0 +1,5 @@
+Checks: "modernize-*,-modernize-use-nullptr,clang-analyzer-*"
+WarningsAsErrors: "*"
+HeaderFilterRegex: "^(drivers/.*|include/zephyr/drivers/.*)$"
+AnalyzeTemporaryDtors: false
+FormatStyle: file

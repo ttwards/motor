@@ -21,8 +21,6 @@ properties:
   gear_ratio:
     type: int
     required: true
-  label:
-    type: string
   capabilities:
     type: uint8-array
     required: true

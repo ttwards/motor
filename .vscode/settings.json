@@ -6,6 +6,11 @@
             "tooltip": "Build the Zephyr project"
         },
         {
+            "label": "Tidy",
+            "task": "Tidy",
+            "tooltip": "Build the Zephyr project"
+        },
+        {
             "label": "Flash",
             "task": "Flash",
             "tooltip": "Flash the Zephyr project to the board"
@@ -31,5 +36,23 @@
     "cmake.configureOnOpen": false,
     "zephyr-ide.use-zephyr-ide-json": true,
     "zephyr-ide.projects": null,
-    "mcu-debug.rtos-views.showRTOS": false
+    "mcu-debug.rtos-views.showRTOS": false,
+    "clangd.arguments": [
+        // 在后台自动分析文件（基于complie_commands)
+        "--background-index",
+        // 标记compelie_commands.json文件的目录位置
+        "--compile-commands-dir=build",
+        // 同时开启的任务数量
+        "-j=8",
+        // clang-tidy功能
+        "--clang-tidy",
+        // 全局补全（会自动补充头文件）
+        "--all-scopes-completion",
+        // 详细补全
+        "--completion-style=detailed",
+        // 补充头文件
+        "--header-insertion=iwyu",
+        // pch优化的位置
+        "--pch-storage=disk",
+  ],
 }

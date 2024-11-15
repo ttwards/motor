@@ -18,3 +18,10 @@ properties:
   k_d: 
     type: int
     required: true
+  input:
+    type: string
+    required: true 
+    enum:
+      - "speed"
+      - "angle"
+      - "torque"

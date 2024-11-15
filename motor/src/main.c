@@ -52,8 +52,14 @@ k_tid_t feedback_tid = 0;
 K_THREAD_STACK_DEFINE(feedback_stack_area, 4096); // 定义线程栈
 void console_feedback(void *arg1, void *arg2, void *arg3) {
 	while (1) {
-		LOG_INF("rpm: motor1:%d\n", motor_get_speed(motor1));
-		k_msleep(280);
+		LOG_INF("rpm: motor1:%.2f\n", motor_get_speed(motor1));
+        LOG_INF("torque: motor1:%.2f\n", motor_get_torque(motor1));
+        LOG_INF("angle: motor1:%.6f\n", motor_get_angle(motor1));
+		k_msleep(500);
+        LOG_INF("rpm: motor1:%.2f\n", motor_get_speed(motor1));
+        LOG_INF("torque: motor1:%.2f\n", motor_get_torque(motor1));
+        LOG_INF("angle: motor1:%.6f\n", motor_get_angle(motor1));
+		k_msleep(500);
 	}
 }
 
@@ -69,7 +75,7 @@ int main(void)
 	// err = can_start(can_dev);
 	// if (err != 0)
 	// 	printk("Error starting CAN controller (err %d)", err);
-	motor_set_torque(motor1, 1);
+	motor_set_angle(motor1, 10);
 	// motor_set_speed(motor2, 1222);
 	// motor_set_speed(motor3, 1222);
 	// motor_set_speed(motor4, 1222);
@@ -82,7 +88,7 @@ int main(void)
 	feedback_tid = k_thread_create(&feedback_thread_data, feedback_stack_area, // 修改为 can_send_stack_area
                                 K_THREAD_STACK_SIZEOF(feedback_stack_area), console_feedback,
 								motor1, NULL, NULL,
-								2, 0, K_MSEC(300));
+								0, 0, K_MSEC(300));
 	while (1) {
 		// motor_set_speed(motor1, -1222);
 		// motor_set_speed(motor2, -1222);
