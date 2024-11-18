@@ -70,7 +70,6 @@
 
 #include <sys/_intsup.h>
 #include <zephyr/kernel.h>
-#include "zephyr/logging/log_core.h"
 #include <zephyr/kernel/thread.h>
 #include <errno.h>
 #include <zephyr/sys/util.h>
@@ -91,59 +90,11 @@ extern "C" {
 #define MOTOR_MODE_SPEED 1
 #define MOTOR_MODE_TORQUE 2
 
-#define MOTOR_DT_DRIVER_DATA_INST_GET(inst) {0}
-
-#define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
-#define DT_DRIVER_GET_CANPHY_IDT(node_id) \
-		DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
-#define DT_DRIVER_GET_CANBUS_NAME(node_id) \
-		DT_NODE_FULL_NAME(DT_DRIVER_GET_CANBUS_IDT(node_id))
-
-#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_DRIVER_GET_CANPHY_IDT(node_id))
-#define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
-
-#define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) \
-	MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
-
-#define GET_CONTROLLER_STRUCT(node_id, prop, idx) \
-	DEVICE_DT_GET(DT_PROP_BY_IDX(node_id, prop, idx))
-
-/**
- * @brief Static initializer for @p motor_driver_config struct
- *
- * @param node_id Devicetree node identifier
- */
-#define MOTOR_DT_DRIVER_CONFIG_GET(node_id)				\
-	{ \
-		.phy = DT_GET_CANPHY(node_id), \
-		.canbus = DT_DRIVER_GET_CANBUS_NAME(node_id), \
-		.tx_id = DT_PROP(node_id, tx_addr), \
-		.rx_id = DT_PROP(node_id, rx_addr), \
-		.compat = DT_PROP(node_id, compatible), \
-		.controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT, (,))}, \
-		.capabilities = DT_PROP(node_id, capabilities), \
-	}
-
-#define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)   \
-	MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
-
-#define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level,	\
-			     prio, api, ...)				\
-	DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level,	\
-			 prio, api, __VA_ARGS__)
-
-typedef uint8_t motor_mode_t;
-
-struct motor_driver_data {
-	/** Motor control mode */
-	motor_mode_t mode;
-};
-
 struct motor_driver_config {
 	/** Physical device */
 	const struct device *phy;
-	/** CAN Bus device */
-	char canbus[12];
+    /** motor ID  */
+    uint8_t id;
 	/** CAN TX ID */
 	uint32_t tx_id;
 	/** CAN RX ID */
@@ -153,6 +104,8 @@ struct motor_driver_config {
 	uint8_t capabilities[4];
 	struct device *controller[4];
 };
+
+struct motor_driver_data {};
 
 /**
  * @typedef motor_get_status()
@@ -202,6 +155,13 @@ typedef int8_t (*motor_api_torque_t)(const struct device *dev, float torque);
  */
 typedef int8_t (*motor_api_angle_t)(const struct device *dev, float angle);
 
+/**
+ * @typedef motor_set_zero()
+ * @brief Callback API returning motor status
+ *
+ * @see get_status() for argument descriptions.
+ */
+typedef float (*motor_api_zero_t)(const struct device *dev);
 
 /**
  * @brief Servo Motor driver API
@@ -213,6 +173,7 @@ __subsystem struct motor_driver_api {
 	motor_api_speed_t motor_set_speed;
 	motor_api_torque_t motor_set_torque;
 	motor_api_angle_t motor_set_angle;
+    motor_api_zero_t motor_set_zero;
 };
 
 /**
@@ -345,6 +306,26 @@ static inline int8_t z_impl_motor_set_torque(const struct device *dev, float tor
     return -ENOSYS;
   }
   return api->motor_set_torque(dev, torque);
+}
+
+/**
+ * @brief Set Zero
+ * 
+ * This optional routine sets the current angle of the motor to zero.
+ *
+ * @param dev Motor Device
+    * @return angle before being set to zero
+ */
+__syscall float motor_set_zero(const struct device *dev);
+static inline float z_impl_motor_set_zero(const struct device *dev)
+{
+  const struct motor_driver_api *api =
+    (const struct motor_driver_api *)dev->api;
+
+  if (api->motor_set_zero == NULL) {
+    return -ENOSYS;
+  }
+  return api->motor_set_zero(dev);
 }
 
 /**

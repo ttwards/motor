@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "motor_dji.h"
-#include "dji_ratios.h"
-#include <limits.h>
 #include <math.h>
 #include <soc.h>
 #include <stdint.h>
@@ -14,41 +12,9 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/time_units.h>
 
+#define DT_DRV_COMPAT dji_motor
+
 LOG_MODULE_REGISTER(motor_dji, CONFIG_MOTOR_LOG_LEVEL);
-
-#define CAN_DEVICE_NAME DT_LABEL(DT_CHOSEN(zephyr_canbus))
-#define CAN_MSG_DLC 8
-#define SEND_INTERVAL K_MSECONDS(10)
-
-#define FIXED_POINT_SHIFT 8
-#define MULTIPLIER                                                             \
-  (int)(0.4 * (1 << FIXED_POINT_SHIFT)) // 0.4 * 256 = 102.4 ≈ 102
-
-#define CAN_SEND_STACK_SIZE 4096
-#define CAN_SEND_PRIORITY -1
-
-#define HIGH_BYTE(x) ((x) >> 8)
-#define LOW_BYTE(x) ((x) & 0xFF)
-#define COMBINE_HL8(HIGH, LOW) ((HIGH << 8) + LOW)
-
-#define SIZE_OF_ARRAY(arr) (sizeof(arr) / sizeof(arr[0]))
-
-/** @brief Macros for each in dts */
-#define MOTOR_NODE DT_NODELABEL(motor)
-#define CAN_BUS_NODE DT_NODELABEL(canbus)
-
-#define MOTOR_PATH DT_PATH(rm_motor)
-#define CAN_BUS_PATH DT_PATH(canbus)
-
-#define IS_DJI_COMPAT(node_id)                                                 \
-  (DT_NODE_HAS_COMPAT(node_id, dji_m3508) ||                                   \
-   DT_NODE_HAS_COMPAT(node_id, dji_m2006) ||                                   \
-   DT_NODE_HAS_COMPAT(node_id, dji_m6020) ||                                   \
-   DT_NODE_HAS_COMPAT(                                                         \
-       node_id, dji_others)) // Add other DJI compatible strings as needed
-
-#define DJI_DEVICE_POINTER(node_id) DEVICE_DT_GET(node_id)
-#define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
 
 const struct device *motor_devices[] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(MOTOR_PATH, DJI_DEVICE_POINTER, (, ))};
@@ -56,35 +22,37 @@ const struct device *motor_devices[] = {
 const struct device *can_devices[] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
 
-#define GET_CANPHY_POINTER_BY_IDX(node_id, idx)                                \
-  DEVICE_DT_GET(DT_PHANDLE(DT_CHILD_BY_IDX(node_id, idx)))
-#define CANPHY_BY_IDX(idx) GET_CANPHY_POINTER_BY_IDX(CAN_BUS_PATH, idx)
-
-#define MOTOR_COUNT sizeof(motor_devices) / sizeof(motor_devices[0])
-#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)
-
-#define GET_CAN_CHANNEL_IDT(node_id) DT_PHANDLE(node_id, can_channel)
-#define GET_CAN_DEV(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
-#define GET_TX_ID(node_id) DT_PHANDLE(node_id, tx_addr)
-#define GET_RX_ID(node_id) DT_PHANDLE(node_id, rx_addr)
-#define GET_CTRL_ID(node_id) GET_TX_ID(node_id) & 0xF
-
 #define CTRL_STRUCT_DATA(node_id)                                              \
   {                                                                            \
     .can_dev = DT_GET_CANPHY_BY_BUS(node_id), .target_rpm = {0}, .flags = 0,   \
     .info = {0}, .full[0] = false, .full[1] = false, .full[2] = false,         \
-    .mask = 0,                                                                 \
+    .full[3] = false, .mask = 0,                                               \
   }
 
-int frames_id(int tx_id) {
-  if (tx_id == 0x1FF) {
+static int frames_id(int tx_id) {
+  if (tx_id == 0x200) {
     return 0;
-  } else if (tx_id == 0x200) {
+  } else if (tx_id == 0x1FF) {
     return 1;
-  } else if (tx_id == 0x2FF) {
+  } else if (tx_id == 0x1FE) {
     return 2;
+  } else if (tx_id == 0x2FE) {
+    return 3;
   }
   return -1; // Return a default value if no match is found
+}
+
+static int txframe_id(int frames_id) {
+    if(frames_id == 0) {
+        return 0x200;
+    } else if(frames_id == 1) {
+        return 0x1FF;
+    } else if(frames_id == 2) {
+        return 0x1FE;
+    } else if(frames_id == 3) {
+        return 0x2FE;
+    }
+    return -1;
 }
 
 /**
@@ -114,26 +82,13 @@ K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry,
                 10);
 
 static inline motor_id_t canbus_id(const struct device *dev) {
-  const struct motor_driver_config *cfg = dev->config;
-  return (cfg->rx_id & 0xF) - 1;
+  struct dji_motor_data *data = dev->data;
+  return data->canbus_id;
 }
 
 static inline motor_id_t motor_id(const struct device *dev) {
-  const struct motor_driver_config *cfg = dev->config;
-  if (strcmp(cfg->compat, "dji_gm6020") == 1)
-    return (cfg->rx_id & 0xF) - 5;
-  else
-    return (cfg->rx_id & 0xF) - 1;
-}
-
-static inline motor_id_t motor_id_mapping(int8_t can_id, int8_t frame_id,
-                                          int8_t id) {
-  return motor_cans[can_id].mapping[frame_id][id];
-}
-
-static inline bool is_gm6020(const struct device *dev) {
-  const struct motor_driver_config *cfg = dev->config;
-  return strcmp(cfg->compat, "dji_gm6020") == 1;
+  const struct dji_motor_config *cfg = dev->config;
+  return cfg->common.id - 1;
 }
 
 int8_t dji_set_speed(const struct device *dev, float speed_rpm) {
@@ -194,11 +149,13 @@ int8_t dji_set_torque(const struct device *dev, float torque) {
   return 0;
 }
 
-void dji_set_zero(const struct device *dev) {
+float dji_set_zero(const struct device *dev) {
+  float curr_angle = dji_get_angle(dev);
   struct dji_motor_data *data = dev->data;
   struct motor_controller *ctrl_struct = &data->ctrl_struct[data->canbus_id];
   uint8_t id = motor_id(dev);
   ctrl_struct->info[id].RAW_angle = 0;
+  return curr_angle;
 }
 
 float dji_get_angle(const struct device *dev) {
@@ -299,18 +256,11 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame,
     LOG_ERR("Unknown motor ID");
     return;
   }
-  // Find which CAN Bus it's on
-  uint8_t canbus_id = 0;
-  for (int i = 0; i < CAN_COUNT; i++) {
-    if (can_dev == ctrl_struct[i].can_dev) {
-      canbus_id = i;
-      break;
-    }
-  }
+  int8_t bus_id = canbus_id(can_dev);
   uint32_t prev_time = ctrl_struct->info[id].curr_time;
   if (!ctrl_struct)
     return;
-  struct motor_info *motor_info = &ctrl_struct[canbus_id].info[id];
+  struct motor_info *motor_info = &ctrl_struct[bus_id].info[id];
   if (!motor_info)
     return;
   // Store in RAW data. Process when API is called.
@@ -320,14 +270,14 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame,
   motor_info->rpm = COMBINE_HL8(rx_frame.data[2], rx_frame.data[3]);
   motor_info->current = COMBINE_HL8(rx_frame.data[4], rx_frame.data[5]);
   motor_info->temperature = rx_frame.data[6];
-  ctrl_struct[canbus_id].flags |= 1 << id;
+  ctrl_struct[bus_id].flags |= 1 << id;
   ctrl_struct->info[id].curr_time = current_time;
   ctrl_struct->info[id].prev_time = prev_time;
   for (int i = 0; i < 3; i++) {
-    if ((ctrl_struct[canbus_id].mask[i] | ctrl_struct[canbus_id].flags) ==
+    if ((ctrl_struct[bus_id].mask[i] | ctrl_struct[bus_id].flags) ==
         0xFF) {
       //   ctrl_struct->flags ^= 0xF;
-      ctrl_struct[canbus_id].full[i] = 1;
+      ctrl_struct[bus_id].full[i] = 1;
       k_thread_resume(dji_motor_ctrl_thread);
       return;
     }
@@ -413,7 +363,7 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2,
   k_sleep(K_MSEC(500));
   while (1) {
     for (int8_t i = 0; i < CAN_COUNT; i++) {
-      for (int j = 0; j < 3; j++) {
+      for (int j = 0; j < 4; j++) {
         if (ctrl_struct[i].full[j] == 1) {
           uint8_t id_temp = ctrl_struct[i].mapping[0][0];
           for (int k = 0; k < 4; k++) {
@@ -423,7 +373,7 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2,
               motor_calc(ctrl_struct[i].motor_devs[id_temp]);
             }
           }
-          txframe[i][j].id = ((0x1FF + (j & 0x1)) + ((j & 0x2) << 7));
+          txframe[i][j].id = txframe_id(j);
           txframe[i][j].dlc = 8;
           txframe[i][j].flags = 0;
           uint8_t data[8] = {0};
@@ -449,3 +399,8 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2,
     k_thread_suspend(dji_motor_ctrl_thread);
   }
 }
+
+DT_INST_FOREACH_STATUS_OKAY(DMOTOR_INST)
+
+
+

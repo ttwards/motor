@@ -2,17 +2,14 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-description: DJI M3508 Motor
+description: DJI Motor
 
-compatible: "dji,m3508"
+compatible: "dji,motor"
 
 include: [base.yaml]
 
 properties:
-  tx_addr:
-    type: int
-    required: true
-  rx_addr:
+  id:
     type: int
     required: true
   can_channel:
@@ -27,3 +24,12 @@ properties:
   controllers:
     type: phandles
     required: true
+  is_m3508:
+    type: boolean
+    required: false
+  is_m2006:
+    type: boolean
+    required: false
+  is_gm6020:
+    type: boolean
+    required: false

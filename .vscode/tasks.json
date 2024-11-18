@@ -5,6 +5,12 @@
             "label": "Build",
             "type": "shell",
             "command": "west build -p always -b robomaster_board_c motor",
+            "args": [],
+            "options": {
+                "env": {
+                    "PATH": "/opt/miniconda3/bin:${env:PATH}"
+                }
+            },
             "group": {
                 "kind": "build",
                 "isDefault": false

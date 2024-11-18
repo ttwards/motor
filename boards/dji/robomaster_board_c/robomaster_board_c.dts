@@ -68,9 +68,9 @@
 	};
     rm_motor {
 		motor0: motor0{
-			compatible = "dji,m3508";
-			tx_addr = <0x200>;
-			rx_addr = <0x201>;
+			compatible = "dji,motor";
+            is_m3508;
+			id = <1>;
 			gear_ratio = <1920>;
 			label = "Motor0";
 			status = "okay";

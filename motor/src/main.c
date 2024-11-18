@@ -25,13 +25,13 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 /* Devicetree */
 #define CANBUS_NODE DT_CHOSEN(zephyr_canbus)
-#define MOTOR1_NODE DT_INST(0, dji_m3508)
-#define MOTOR2_NODE DT_INST(1, dji_m3508)
-#define MOTOR3_NODE DT_INST(2, dji_m3508)
-#define MOTOR4_NODE DT_INST(3, dji_m3508)
-#define MOTOR5_NODE DT_INST(4, dji_m3508)
-#define MOTOR6_NODE DT_INST(5, dji_m3508)
-#define MOTOR7_NODE DT_INST(6, dji_m3508)
+#define MOTOR1_NODE DT_INST(0, dji_motor)
+#define MOTOR2_NODE DT_INST(1, dji_motor)
+#define MOTOR3_NODE DT_INST(2, dji_motor)
+#define MOTOR4_NODE DT_INST(3, dji_motor)
+#define MOTOR5_NODE DT_INST(4, dji_motor)
+#define MOTOR6_NODE DT_INST(5, dji_motor)
+#define MOTOR7_NODE DT_INST(6, dji_motor)
 
 #define CPU_NODE DT_NODELABEL(cpu0)
 

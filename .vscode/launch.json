@@ -20,7 +20,7 @@
             "preRestartCommands": [
                 // "monitor reset halt"
             ],
-            "gdbPath": "${userHome}/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
             "liveWatch": {
                 "enabled": true,
                 "samplesPerSecond": 1
@@ -39,7 +39,7 @@
                 "interface/stlink.cfg",
                 "target/stm32f4x.cfg"
             ],
-            "gdbPath": "${userHome}/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"
         },
     ]
 }
