@@ -71,27 +71,15 @@
  *
  * @param node_id Devicetree node identifier
  */
-#define IS_4_PLUS(node_id) (DT_PROP(node_id, id) > 4) ? 1 : 0
-#define MOTOR_TYPE(node_id)                                                    \
-  (DT_PROP(node_id, is_gm6020)                                                 \
-       ? GM6020_CONVERT_NUM                                                    \
-       : (DT_PROP(node_id, is_m3508)                                           \
-              ? M3508_CONVERT_NUM                                              \
-              : (DT_PROP(node_id, is_m2006) ? M2006_CONVERT_NUM : -1)))
+
 #define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                    \
   {                                                                            \
     .phy = DT_GET_CANPHY(node_id),                                             \
     .id = DT_PROP(node_id, id),                                                \
-    .tx_id = DT_PROP(node_id, is_gm6020)                                       \
-                 ? (0x1FE + IS_4_PLUS(node_id) * 0x100)                        \
-             : (DT_PROP(node_id, is_m3508) || DT_PROP(node_id, is_m2006))      \
-                 ? (0x200 - IS_4_PLUS(node_id)) : 0,                           \
-    .rx_id = 0x200 + DT_PROP(node_id, id) + DT_PROP(node_id, is_gm6020)  \
-                 ? 4 : 0,                                                      \
-    .compat = MOTOR_TYPE(node_id),                                             \
+    .tx_id = DT_PROP(node_id, tx_id),                                          \
+    .rx_id = DT_PROP(node_id, rx_id),                                          \
     .controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers,              \
                                             GET_CONTROLLER_STRUCT, (, ))},     \
-    .capabilities = DT_PROP(node_id, capabilities),                            \
   }
 
 #define DT_DRIVER_GET_CANPHY(inst) DT_GET_CANPHY(DT_DRIVER_GET_CANBUS_IDT(inst))
@@ -112,6 +100,9 @@ static struct dji_motor_data dji_motor_data_##inst = { \
 static const struct dji_motor_config dji_motor_cfg_##inst = { \
     .common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst), \
     .gear_ratio = (float) DT_PROP(DT_DRV_INST(inst), gear_ratio) / 100.0f, \
+    .is_gm6020 = DT_PROP(DT_DRV_INST(inst), is_gm6020), \
+    .is_m3508 = DT_PROP(DT_DRV_INST(inst), is_m3508), \
+    .is_m2006 = DT_PROP(DT_DRV_INST(inst), is_m2006), \
 };
 
 #define DMOTOR_DEFINE_INST(inst) \

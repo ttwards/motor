@@ -55,11 +55,8 @@ void console_feedback(void *arg1, void *arg2, void *arg3) {
 		LOG_INF("rpm: motor1:%.2f\n", motor_get_speed(motor1));
         LOG_INF("torque: motor1:%.2f\n", motor_get_torque(motor1));
         LOG_INF("angle: motor1:%.6f\n", motor_get_angle(motor1));
-		k_msleep(500);
-        LOG_INF("rpm: motor1:%.2f\n", motor_get_speed(motor1));
-        LOG_INF("torque: motor1:%.2f\n", motor_get_torque(motor1));
-        LOG_INF("angle: motor1:%.6f\n", motor_get_angle(motor1));
-		k_msleep(500);
+		k_msleep(300);
+        motor_set_zero(motor1);
 	}
 }
 
@@ -75,7 +72,7 @@ int main(void)
 	// err = can_start(can_dev);
 	// if (err != 0)
 	// 	printk("Error starting CAN controller (err %d)", err);
-	motor_set_angle(motor1, 10);
+	motor_set_angle(motor1, 45);
 	// motor_set_speed(motor2, 1222);
 	// motor_set_speed(motor3, 1222);
 	// motor_set_speed(motor4, 1222);

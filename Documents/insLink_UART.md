@@ -1,0 +1,236 @@
+## ARES2025 上下位机通讯
+### 零
+1. 过程图
+
+```mermaid
+sequenceDiagram
+    participant 上位机
+    participant 下位机
+    loop until repeat
+       上位机->>下位机: 发送握手请求
+    end
+    下位机->>上位机: 返回握手响应
+    上位机->>下位机: 注册变量
+    下位机->>上位机: 
+    上位机->>下位机: 注册函数
+    下位机->>上位机: 
+    loop control
+        上位机->>下位机: 设置变量
+        上位机->>下位机: 调用函数
+        上位机->>下位机: 请求变量
+        下位机->>上位机: 
+		下位机->>上位机: 事件提醒
+    end
+```
+1. 错误
+```
+0x06 ACK 收到通知且效验正确
+0x15 NAK 消息无法解析
+0x18 CAN 收到通知且效验错误
+```
+### 一、握手包
+1. 上位机在未握手成功时持续发送 `0x1F1F1F1F` 请求握手（最好间隔约150ms）
+2. 下位机接收后发送 `0x1E1E1E1E`
+### 二、注册变量
+1. 上位机首先发送变量名并决定标识符
+2. 注册帧头为`0x2F20`，结尾为`0x202F`
+3. 注册帧结构：
+**一帧最多包含16个变量**，超过16个则分多次发送
+```mermaid
+packet-beta
+title Vars Register Frame
+0-1: "0x2F20"
+2-3: "Var Num"
+4-21: "Block 0"
+22-39: "Block 1"
+40-57: "Block 2"
+58-59: "CRC"
+60-61: "0x202F"
+```
+```mermaid
+packet-beta
+title Vars Register Block
+0: "Begin 0x02"
+1-12: "Var name char[16]"
+13-14: "Code"
+15-16: "Format"
+17: "End 0x03"
+```
+`var_code`由上位机决定，之后请求或设置该变量时用该code指代
+```
+enum Format {
+    "FP32": 0x0
+    "IN32": 0x1
+}
+```
+1. CRC效验
+在`0x202F`前2 Bytes长度CRC-16效验位
+1. 回复（见零）
+### 三、注册函数
+1. 上位机首先发送变量名并决定标识符
+2. 注册帧头为`0x3F20`，结尾为`0x203F`
+3. 函数注册帧结构：
+	**一帧最多包含16个变量**，超过16个则分多次发送
+   ```mermaid
+   packet-beta
+   title Vars Register Frame
+   0-1: "0x3F20"
+   2-3: "Var Num"
+   4-19: "Block 0"
+   20-35: "Block 1"
+   36-51: "Block 2"
+   52-67: "Block 3"
+   68-83: "Block 4"
+   84-85: "CRC"
+   86-87: "0x203F"
+   ```
+   ```mermaid
+   packet-beta
+   title Funcs Register Block
+   0: "Begin 0x02"
+   1-12: "Func name char[16]"
+   13-14: "Code"
+   15: "End 0x03"
+   ```
+`func_code`由上位机决定，之后请求或设置该变量时用该code指代
+1. CRC效验
+	在`0x202F`后接2 Bytes长度CRC-16效验位
+2. 回复
+
+### 四、注册事件
+1. 上位机首先发送事件名并决定标识符
+2. 注册帧头为`0x4F20`，结尾为`0x204F`
+3. 事件注册帧结构：
+	**一帧最多包含8个事件**，超过8个则分多次发送
+   ```mermaid
+   packet-beta
+   title Vars Register Frame
+   0-1: "0x4F20"
+   2-3: "Event Num"
+   4-19: "Block 0"
+   20-35: "Block 1"
+   36-51: "Block 2"
+   52-67: "Block 3"
+   68-83: "Block 4"
+   84-85: "CRC"
+   86-87: "0x204F"
+   ```
+   ```mermaid
+   packet-beta
+   title Funcs Register Block
+   0: "Begin 0x02"
+   1-12: "Event name char[16]"
+   13-14: "Code"
+   15: "End 0x03"
+   ```
+`event_code`由上位机决定，之后请求或设置该变量时用该code指代
+1. CRC效验
+	在`0x204F`前2 Bytes长度CRC-16效验位
+2. 回复
+
+### 四、设置变量
+1. 变量设置帧头为`0x5F0F`，结尾为`0x0F5F`
+2. 变量设置帧格式
+   **帧最多包含16个变量**，超过16个则分多次发送
+   ```mermaid
+   packet-beta
+   title Var Set Frame
+   0-1: "0x4F0F"
+   2-3: "Var Num"
+   4-11: "Block 0"
+   12-19: "Block 1"
+   20-21: "CRC"
+   22-23: "0x0F4F"
+   ```
+   ```mermaid
+   packet-beta
+   title Var Set Block
+   0: "Begin 0x02"
+   1-2: "Var Code"
+   3-6: "Var Data"
+   7: "End 0x03"
+   ```
+3. CRC效验
+   在第4～25 Byte区间数据的CRC-16效验位
+### 五、请求变量
+1. 变量请求帧头为`0x6F0F`，结尾为`0x0F6F`
+2. 变量请求帧格式
+   **帧最多包含16个变量**，超过16个则分多次发送
+   ```mermaid
+   packet-beta
+   title Var Get Frame
+   0-1: "0x5F0F"
+   2-3: "Var Num"
+   4-7: "Block 0"
+   8-11: "Block 1"
+   12-15: "Block 2"
+   16-17: "CRC"
+   18-19: "0x0F5F"
+   ```
+   ```mermaid
+   packet-beta
+   title Var Get Block
+   0: "Begin 0x02"
+   1-2: "Var Code"
+   3: "End 0x03"
+   ```
+3. 变量回复帧格式
+   **帧最多包含16个变量**，超过16个则分多次发送
+   ```mermaid
+   packet-beta
+   title Var Ret Frame
+   0-1: "0x6FFF"
+   2-3: "Var Num"
+   4-11: "Block 0"
+   12-19: "Block 1"
+   20-27: "Block 2"
+   28-29: "CRC"
+   30-31: "0xFF6F"
+   ```
+   ```mermaid
+   packet-beta
+   title Var Ret Block
+   0: "Begin 0x02"
+   1-2: "Var Code"
+   3-6: "Var Data"
+   7: "End 0x03"
+   ```
+### 六、调用函数
+1. 函数调用帧头为`0x7F0F`，结尾为`0x0F7F`
+2. 函数调用帧格式
+   **帧最多包含2个函数**，超过2个则分多次发送，按照从前到后的顺序执行
+   ```mermaid
+   packet-beta
+   title Func Call Frame
+   0-1: "0x6F0F"
+   2-3: "Func Num"
+   4-19: "Block 0"
+   20-35: "Block 1"
+   36-51: "Block 2"
+   52-53: "CRC"
+   54-55: "0x0F6F"
+   ```
+   ```mermaid
+   packet-beta
+   title Func Call Block
+   0: "Begin 0x02"
+   1-2: "Func Code"
+   3-6: "Arg 0"
+   7-10: "Arg 1"
+   11-14: "Arg 2"
+   15: "End 0x03"
+   ```
+### 七、事件通知
+1. 事件通知帧头为`0x8F0F`，结尾为`0x0F8F`
+2. 事件通知帧格式
+   **帧只能包含1个事件**，超过1个则分多次发送
+   ```mermaid
+   packet-beta
+   title Event Notify Frame
+   0-1: "0x7F0F"
+   2-3: "Event Code"
+   4-35: "Arg 0"
+   36-67: "Arg 1"
+   68-69: "CRC"
+   70-71: "0x0F7F"
+   ```

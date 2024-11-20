@@ -34,7 +34,7 @@ typedef uint16_t motor_id_t;
 struct motor_info {
   uint16_t angle;
   uint16_t prev_angle;
-  int16_t current;
+  int32_t current;
   int16_t rpm;
   float PCD_angle;
   float PCD_rpm;
@@ -46,7 +46,7 @@ struct motor_info {
 };
 
 struct motor_controller {
-  const struct device *can_dev;
+  struct device *can_dev;
   float target_angle[8];
   float target_rpm[8];
   float target_torque[8];
@@ -70,7 +70,7 @@ struct motor_controller {
 struct dji_motor_data {
   struct motor_driver_data common;
   canbus_id_t canbus_id;
-  uint8_t current_mode_index;
+  int8_t current_mode_index;
   struct motor_controller *ctrl_struct;
   uint8_t convert_num;
 };
@@ -78,6 +78,9 @@ struct dji_motor_data {
 struct dji_motor_config {
   struct motor_driver_config common;
   float gear_ratio;
+  bool is_gm6020;
+  bool is_m3508;
+  bool is_m2006;
 };
 
 // 全局变量声明

@@ -70,13 +70,14 @@
 		motor0: motor0{
 			compatible = "dji,motor";
             is_m3508;
-			id = <1>;
+			id = <5>;
+            rx_id = <0x205>;
+            tx_id = <0x1FF>;
 			gear_ratio = <1920>;
 			label = "Motor0";
 			status = "okay";
 			can_channel = <&canbus1>;
 			controllers = <&angle_pid &speed_pid>;
-			capabilities = [00 01];
 		};
 
 		// motor1: motor1{
@@ -98,9 +99,9 @@
 			#controller-cells = <0>;
 			compatible = "pid,single";
 			input = "angle";
-			k_p = <100>;
-			k_i = <10>;
-			k_d = <10>;
+			k_p = <700>;
+			k_i = <3>;
+			k_d = <800>;
 		};
 		speed_pid: speed_pid {
 			#controller-cells = <0>;

@@ -76,6 +76,11 @@ static void single_pid_calc(const struct device *pid_dev) {
   return;
 }
 
+static bool single_pid_get_capability(const struct device *dev, char *str) {
+    const struct pid_single_driver_config *cfg = dev->config;
+    return (strcmp(cfg->input, str) == 0) ? true : false;
+}
+
 static void single_pid_reg_input(const struct device *pid_dev, float *curr,
                                  float *ref) {
   struct pid_single_driver_data *pid_data = pid_dev->data;
@@ -103,7 +108,9 @@ static struct pid_driver_api pid_api_funcs = {
     .pid_calc = single_pid_calc,
     .pid_reg_input = single_pid_reg_input,
     .pid_reg_time = single_pid_reg_time,
-    .pid_reg_output = single_pid_reg_output};
+    .pid_reg_output = single_pid_reg_output,
+    .pid_get_capability = single_pid_get_capability,    
+};
 
 // static uintptr_t pid_addr(const struct device *dev, float *curr) {
 //   struct pid_single_driver_data *data = dev->data;

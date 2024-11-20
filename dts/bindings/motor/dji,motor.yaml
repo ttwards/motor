@@ -12,14 +12,17 @@ properties:
   id:
     type: int
     required: true
+  tx_id:
+    type: int
+    required: true
+  rx_id:
+    type: int
+    required: true
   can_channel:
     type: phandle
     required: true  
   gear_ratio:
     type: int
-    required: true
-  capabilities:
-    type: uint8-array
     required: true
   controllers:
     type: phandles

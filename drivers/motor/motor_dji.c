@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "motor_dji.h"
+#include "syscalls/pid.h"
+#include "zephyr/device.h"
 #include <math.h>
 #include <soc.h>
 #include <stdint.h>
@@ -102,7 +104,7 @@ int8_t dji_set_speed(const struct device *dev, float speed_rpm) {
        i++) {
     if (cfg->common.controller[i] == NULL)
       break;
-    if (cfg->common.capabilities[i] == MOTOR_MODE_SPEED) {
+    if (pid_get_capability(cfg->common.controller[i], "speed")) {
       pid_calc(cfg->common.controller[i]);
       data->current_mode_index = i;
     }
@@ -120,7 +122,7 @@ int8_t dji_set_angle(const struct device *dev, float angle) {
   for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
     if (cfg->common.controller[i] == NULL)
       break;
-    if (cfg->common.capabilities[i] == MOTOR_MODE_ANGLE) {
+    if (pid_get_capability(cfg->common.controller[i], "angle")) {
       pid_calc(cfg->common.controller[i]);
       data->current_mode_index = i;
     }
@@ -138,11 +140,10 @@ int8_t dji_set_torque(const struct device *dev, float torque) {
   for (int i = 0;
        i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]);
        i++) {
-    if (cfg->common.controller[i] == NULL)
-      break;
-    if (cfg->common.capabilities[i] == MOTOR_MODE_TORQUE) {
-      pid_calc(cfg->common.controller[i]);
-      data->current_mode_index = i;
+    if (cfg->common.controller[i] == NULL) {
+        data->current_mode_index = -1;
+        ctrl_struct->target_current[id] = 0;
+        break;
     }
   }
   // ctrl_struct->current[id] = pid_calc(dev);
@@ -195,19 +196,18 @@ int dji_init(const struct device *dev) {
          i++) {
       if (cfg->common.controller[i] == NULL)
         break;
-      struct pid_single_driver_config *pid_cfg =
-          (struct pid_single_driver_config *)cfg->common.controller[i]->config;
-      char *input = pid_cfg->input;
-      if (strcmp(input, "speed") == 0) {
+      struct device *dev =
+          (struct device*)cfg->common.controller[i];
+      if (pid_get_capability(dev, "speed") == 0) {
         pid_reg_input(cfg->common.controller[i],
                       &data->ctrl_struct->info[id].PCD_rpm,
                       &data->ctrl_struct->target_rpm[id]);
         pid_reg_output(cfg->common.controller[i],
                        &data->ctrl_struct->target_torque[id]);
-      } else if (strcmp(input, "angle") == 0) {
+      } else if (pid_get_capability(dev, "angle") == 0) {
         pid_reg_input(cfg->common.controller[i],
                       &data->ctrl_struct->info[id].PCD_angle,
-                      &data->ctrl_struct->target_rpm[id]);
+                      &data->ctrl_struct->target_angle[id]);
         pid_reg_output(cfg->common.controller[i],
                        &data->ctrl_struct->target_rpm[id]);
       } else {
@@ -219,18 +219,17 @@ int dji_init(const struct device *dev) {
                    &(data->ctrl_struct->info[id].prev_time));
     }
     data->current_mode_index = 0;
-    data->ctrl_struct->motor_devs[id] = dev;
+    data->ctrl_struct->motor_devs[id] = (struct device*) dev;
     data->ctrl_struct->info[id].prev_time = 0;
     data->ctrl_struct->flags |= 1 << id;
     data->ctrl_struct->mapping[frame_id][id % 4] = id;
-    if (strcmp(cfg->common.compat, "dji,gm6020") == 0) {
+    if (cfg->is_gm6020) {
       data->convert_num = GM6020_CONVERT_NUM;
-    } else if (strcmp(cfg->common.compat, "dji,m3508") == 0) {
+    } else if (cfg->is_m3508) {
       data->convert_num = M3508_CONVERT_NUM;
-    } else if (strcmp(cfg->common.compat, "dji,m2006") == 0) {
+    } else if (cfg->is_m2006) {
       data->convert_num = M2006_CONVERT_NUM;
     } else {
-      LOG_ERR("cfg->common.compat: %s", cfg->common.compat);
       LOG_ERR("Unsupported motor type");
     }
 
@@ -249,11 +248,11 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame,
   // Suppose it is 3508/2006
   uint8_t id = (rx_frame.id & 0xF) - 1;
   // If RX_ID does not match, it should be GM6020
-  if (ctrl_struct->rx_ids[id] != rx_frame.id)
+  if (ctrl_struct->rx_ids[id] != rx_frame.id && id > 4)
     id = (rx_frame.id & 0xF) - 5;
   // It should match, but in case we check again
   if (ctrl_struct->rx_ids[id] != rx_frame.id) {
-    LOG_ERR("Unknown motor ID");
+    LOG_ERR("Unknown motor ID: %d, database: %d, received: %d", id, ctrl_struct->rx_ids[id], rx_frame.id);
     return;
   }
   int8_t bus_id = canbus_id(can_dev);
@@ -286,9 +285,6 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame,
 
 static const struct can_filter filter20x = {
     .id = 0x200, .mask = 0x3F0, .flags = 0};
-
-static inline void can_calc(struct can_frame *frame, uint16_t tx_id,
-                            int16_t *currents) {}
 
 static void can_tx_callback(const struct device *can_dev, int error,
                             void *user_data) {
@@ -327,17 +323,20 @@ static void motor_calc(const struct device *dev) {
   info_temp->PCD_torque = info_temp->current *
                           convert[data_temp->convert_num][CURRENT2TORQUE] *
                           config_temp->gear_ratio;
+  // If current_mode_index is -1, it means the motor is in torque control.
   // From the current mode index to the end of the controller array
-  for (int i = data_temp->current_mode_index;
-       i < SIZE_OF_ARRAY(config_temp->common.capabilities); i++) {
-    if (config_temp->common.controller[i] == NULL)
-      break;
-    pid_calc(config_temp->common.controller[i]);
+  if(data_temp->current_mode_index != -1) {
+    for (int i = data_temp->current_mode_index;
+       i < SIZE_OF_ARRAY(config_temp->common.controller); i++) {
+         if (config_temp->common.controller[i] == NULL)
+            break;
+        pid_calc(config_temp->common.controller[i]);
+    }
   }
   data_temp->ctrl_struct[data_temp->canbus_id].target_current[motor_id(dev)] =
       to16t(data_temp->ctrl_struct[data_temp->canbus_id]
                 .target_torque[motor_id(dev)] *
-            convert[data_temp->convert_num][TORQUE2CURRENT]);
+            convert[data_temp->convert_num][TORQUE2CURRENT] / config_temp->gear_ratio);
 }
 
 static struct k_sem tx_queue_sem;

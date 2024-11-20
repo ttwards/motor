@@ -30,6 +30,17 @@
             "detail": "Flash the Zephyr project to the board"
         },
         {
+            "label": "Build & Flash",
+            "type": "shell",
+            "command": "west build -p always -b robomaster_board_c motor && west flash",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Build and flash the Zephyr project"
+        },
+        {
             "label": "Tidy",
             "type": "shell",
             "command": "west build -t tidy",

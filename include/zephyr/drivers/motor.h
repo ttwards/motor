@@ -96,12 +96,10 @@ struct motor_driver_config {
     /** motor ID  */
     uint8_t id;
 	/** CAN TX ID */
-	uint32_t tx_id;
+	int tx_id;
 	/** CAN RX ID */
-	uint32_t rx_id;
+	int rx_id;
 	/** Gear Ratio */
-	char compat[16];
-	uint8_t capabilities[4];
 	struct device *controller[4];
 };
 

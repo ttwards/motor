@@ -12,9 +12,9 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-                // "interface/stlink.cfg",
-                // "target/stm32f4x.cfg"
-                "esp32dap.cfg"
+                "interface/stlink.cfg",
+                "target/stm32f4x.cfg"
+                // "esp32dap.cfg"
             ],
             "svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
             "preRestartCommands": [

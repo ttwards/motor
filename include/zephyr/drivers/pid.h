@@ -6,6 +6,8 @@
 #ifndef PID_H
 #define PID_H
 
+#include "zephyr/toolchain.h"
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <zephyr/device.h>
@@ -57,6 +59,9 @@ typedef void (*pid_api_reg_time_t)(const struct device *dev,
 
 typedef void (*pid_api_reg_output_t)(const struct device *dev, float *output);
 
+typedef bool (*pid_api_get_capability_t)(const struct device *dev, char *str);
+
+
 /**
  * @brief Servo Motor driver API
  */
@@ -66,6 +71,7 @@ __subsystem struct pid_driver_api {
   pid_api_reg_input_t pid_reg_input;
   pid_api_reg_time_t pid_reg_time;
   pid_api_reg_output_t pid_reg_output;
+  pid_api_get_capability_t pid_get_capability;
 };
 
 __syscall void pid_calc(const struct device *dev);
@@ -110,6 +116,18 @@ static inline void z_impl_pid_reg_output(const struct device *dev,
   if (api->pid_reg_output != NULL) {
     api->pid_reg_output(dev, output);
   }
+}
+
+__syscall bool pid_get_capability(const struct device *dev, char *str);
+
+static inline bool z_impl_pid_get_capability(const struct device *dev,
+                                             char *str) {
+  const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
+
+  if (api->pid_get_capability != NULL) {
+    return api->pid_get_capability(dev, str);
+  }
+  return false;
 }
 
 #ifdef __cplusplus
