@@ -13,3 +13,4 @@ CMakeUserPresets.json
 build
 .cache
 .DS_Store
+.VSCodeCounter
