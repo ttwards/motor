@@ -1,5 +1,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/motor.h>
+
 #define MOTOR_DT_DRIVER_DATA_INST_GET(inst)                                    \
   { 0 }
 
@@ -14,19 +16,8 @@
 #define DT_GET_CANPHY_BY_BUS(node_id)                                          \
   DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
 
-#define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst)                                  \
-  MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
-
 #define GET_CONTROLLER_STRUCT(node_id, prop, idx)                              \
   DEVICE_DT_GET(DT_PROP_BY_IDX(node_id, prop, idx))
-
-#define DJI_GET_TXID(node_id)                                                  \
-  (DT_PROP(node_id, is_gm6020)                                                 \
-       ? (0x1FE + 0x100 * (DT_PROP(node_id, id) > 4) ? 1 : 0)            \
-   : ((DT_PROP(node_id, is_m3508) || DT_PROP(node_id, is_m3508))               \
-   ? 0x200 : 0x1FF) +                                                          \
-           DT_PROP(node_id, id) + (DT_PROP(node_id, id) > 4)       \
-       ? 3 : 0)
 
 #define CAN_SEND_STACK_SIZE 4096
 #define CAN_SEND_PRIORITY -1
@@ -72,20 +63,25 @@
  * @param node_id Devicetree node identifier
  */
 
-#define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                    \
-  {                                                                            \
-    .phy = DT_GET_CANPHY(node_id),                                             \
-    .id = DT_PROP(node_id, id),                                                \
-    .tx_id = DT_PROP(node_id, tx_id),                                          \
-    .rx_id = DT_PROP(node_id, rx_id),                                          \
-    .controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers,              \
-                                            GET_CONTROLLER_STRUCT, (, ))},     \
-  }
+#define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                                        \
+    {                                                                                              \
+        .phy = (const struct device *)DT_GET_CANPHY(node_id), .id = DT_PROP(node_id, id),          \
+        .tx_id = DT_PROP(node_id, tx_id), .rx_id = DT_PROP(node_id, rx_id),                        \
+        .controller = {                                                                            \
+            DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT, (, ))},          \
+		.capabilities = DT_PROP(node_id, capabilities),     \
+    }
+
+#define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst)                                  \
+  MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
 
 #define DT_DRIVER_GET_CANPHY(inst) DT_GET_CANPHY(DT_DRIVER_GET_CANBUS_IDT(inst))
+
 #define DT_DRIVER_INST_GET_MOTOR_IDT(inst) DT_DRV_INST(inst)
-#define DT_DRIVER_INST_GET_CANBUS_IDT(inst) \
+
+#define DT_DRIVER_INST_GET_CANBUS_IDT(inst)                                                        \
     DT_PHANDLE(DT_DRIVER_INST_GET_MOTOR_IDT(inst), can_channel)
+
 #define DT_DRIVER_GET_CANBUS_ID(inst) \
     DT_NODE_CHILD_IDX(DT_DRIVER_INST_GET_CANBUS_IDT(inst))
 
@@ -93,7 +89,7 @@
 static struct dji_motor_data dji_motor_data_##inst = { \
     .common = MOTOR_DT_DRIVER_DATA_INST_GET(inst), \
     .canbus_id = DT_DRIVER_GET_CANBUS_ID(inst), \
-    .ctrl_struct = &motor_cans[DT_DRIVER_GET_CANBUS_ID(inst)], \
+    .ctrl_struct = (struct motor_controller *) &motor_cans[DT_DRIVER_GET_CANBUS_ID(inst)], \
 };
 
 #define DMOTOR_CONFIG_INST(inst) \
@@ -105,6 +101,12 @@ static const struct dji_motor_config dji_motor_cfg_##inst = { \
     .is_m2006 = DT_PROP(DT_DRV_INST(inst), is_m2006), \
 };
 
+#define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \
+    DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
+
+#define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)                                                     \
+    MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
+
 #define DMOTOR_DEFINE_INST(inst) \
     MOTOR_DEVICE_DT_INST_DEFINE(inst, dji_init, NULL, \
                     &dji_motor_data_##inst, &dji_motor_cfg_##inst, \
@@ -114,14 +116,6 @@ static const struct dji_motor_config dji_motor_cfg_##inst = { \
 #define DMOTOR_INST(inst) \
     DMOTOR_CONFIG_INST(inst) \
     DMOTOR_DATA_INST(inst) \
-    DMOTOR_DEFINE_INST(inst) 
-
-#define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)                                 \
-  MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
-
-#define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level,      \
-                               prio, api, ...)                                 \
-  DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api,       \
-                   __VA_ARGS__)
+    DMOTOR_DEFINE_INST(inst)
 
 typedef uint8_t motor_mode_t;

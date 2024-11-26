@@ -77,37 +77,50 @@
 			label = "Motor0";
 			status = "okay";
 			can_channel = <&canbus1>;
-			controllers = <&angle_pid &speed_pid>;
+			controllers = <&angle_pid_1 &speed_pid_1>;
 		};
 
-		// motor1: motor1{
-		// 	compatible = "dji,gm6020";
-		// 	k_p = <100>;
-		// 	k_i = <10000>;
-		// 	k_d = <3000>;
-		// 	tx_addr = <0x1FF>;
-		// 	rx_addr = <0x202>;
-		// 	gear_ratio = <1900>;
-		// 	label = "Motor0";
-		// 	status = "okay";
-		// 	can_channel = <&canbus1>;
-		// };
+		motor1: motor1{
+			compatible = "dji,motor";
+            is_gm6020;
+			id = <7>;
+            rx_id = <0x20B>;
+            tx_id = <0x2FF>;
+			gear_ratio = <100>;
+			label = "Motor1";
+			status = "okay";
+			can_channel = <&canbus1>;
+			controllers = <&angle_pid_2 &speed_pid_2>;
+			capabilities = "angle", "speed", "torque";
+		};
 	};
 
 	pid {
-		angle_pid: angle_pid {
+		angle_pid_1: angle_pid_1 {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			input = "angle";
 			k_p = <700>;
 			k_i = <3>;
 			k_d = <800>;
 		};
-		speed_pid: speed_pid {
+		speed_pid_1: speed_pid_1 {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			input = "speed";
 			k_p = <80>;
+			k_i = <20>;
+			k_d = <20>;
+		};
+		angle_pid_2: angle_pid_2 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <100>;
+			k_i = <100>;
+			k_d = <100>;
+		};
+		speed_pid_2: speed_pid_2 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <100>;
 			k_i = <20>;
 			k_d = <20>;
 		};

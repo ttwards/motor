@@ -1,0 +1,7 @@
+Diagnostics:
+  Suppress:
+    [
+      -Wimplicit-function-declaration,
+      drv_unknown_argument,
+	    - missing-braces
+    ]

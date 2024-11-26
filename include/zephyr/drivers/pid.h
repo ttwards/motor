@@ -23,6 +23,9 @@ extern "C" {
   DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api,       \
                    __VA_ARGS__)
 
+#define NORMAL_PID 		0U
+#define MIT_PID			1U
+
 struct pid_single_driver_config {
   float k_p;
   float k_i;
@@ -33,12 +36,15 @@ struct pid_single_driver_config {
 struct pid_single_driver_data {
   float *ref;
   float *curr;
+  float *mit_v_ref;
+  float *mit_v_curr;
   float err_integral;
   float err_derivate;
   float ratio;
   int32_t *curr_time;
   int32_t *prev_time;
   float *output;
+  int8_t mode;
 };
 
 /**

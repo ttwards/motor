@@ -1,5 +1,8 @@
-Checks: "modernize-*,-modernize-use-nullptr,clang-analyzer-*"
+Checks: "modernize-*,-modernize-use-nullptr,clang-analyzer-*,-clang-diagnostic-unknown-argument"
 WarningsAsErrors: "*"
 HeaderFilterRegex: "^(drivers/.*|include/zephyr/drivers/.*)$"
 AnalyzeTemporaryDtors: false
 FormatStyle: file
+SystemHeaders: false
+CompileFlags:
+  Remove: [-mfp16-format=ieee]
