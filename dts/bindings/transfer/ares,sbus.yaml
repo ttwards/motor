@@ -1,0 +1,25 @@
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
+description: SBUS
+
+compatible: "ares,sbus"
+
+properties:
+  frame_size:
+    description: Frame size
+    type: int
+    default: 25
+  input_channels:
+    description: Number of input channels
+    type: int
+    default: 16
+  start_byte:
+    description: Start byte
+    type: int
+    default: 0x0F
+  end_byte:
+    description: End byte
+    type: int
+    default: 0x00

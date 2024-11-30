@@ -20,10 +20,10 @@ config PACKAGE_SEND_TIME_GAP
     help
       The time gap between two motor controlling packages in ms
 
-config MOTOR_M3508
-    bool "MOTOR M3508"
+config MOTOR_DJI
+    bool "MOTOR DJI"
     help
-      Add support for dji m3508 motor
+      Add support for dji motors
 
 config MOTOR_LOG_LEVEL
     int "Motor log level"

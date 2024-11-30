@@ -1,2 +1,3 @@
-dji	DaJiang Innovation Inc.
-pid	PID Controller
+dji		DaJiang Innovation Inc.
+pid		PID Controller
+ares	ARES Devices

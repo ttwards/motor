@@ -1,0 +1,34 @@
+# Motor driver configuration options
+
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig ARES
+    bool "ARES drivers"
+    help
+      Enable support for ARES devices.
+
+if ARES
+
+module = ARES
+module-str = ARES
+source "subsys/logging/Kconfig.template.log_config"
+
+config SBUS_LOG_LEVEL
+    int "sbus log level"
+    default 4
+    help
+      The log level of sbus driver
+
+config SBUS_INIT_PRIORITY
+    int "Sbus init priority"
+    default 90
+    help
+      The init priority of sbus driver
+
+config ARES_SBUS
+    bool "ARES_SBUS"
+    help
+      Add support for sbus
+
+endif

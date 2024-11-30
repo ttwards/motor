@@ -1,0 +1,32 @@
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
+description: Da Miao Motor
+
+compatible: "dm,motor"
+
+include: [base.yaml]
+
+properties:
+  id:
+    type: int
+    required: true
+  tx_id:
+    type: int
+    required: true
+  rx_id:
+    type: int
+    required: true
+  can_channel:
+    type: phandle
+    required: true  
+  gear_ratio:
+    type: int
+    required: true
+  controllers:
+    type: phandles
+    required: true
+  capabilities:
+    type: string-array
+    required: true

@@ -21,6 +21,7 @@
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
 		zephyr,canbus = &can1;
+		sbus,uart = &usart3;
 	};
 
 	aliases {
@@ -66,65 +67,7 @@
 				can_device = <&can2>;
 		};
 	};
-    rm_motor {
-		motor0: motor0{
-			compatible = "dji,motor";
-            is_m3508;
-			id = <5>;
-            rx_id = <0x205>;
-            tx_id = <0x1FF>;
-			gear_ratio = <1920>;
-			label = "Motor0";
-			status = "okay";
-			can_channel = <&canbus1>;
-			controllers = <&angle_pid_1 &speed_pid_1>;
-		};
-
-		motor1: motor1{
-			compatible = "dji,motor";
-            is_gm6020;
-			id = <7>;
-            rx_id = <0x20B>;
-            tx_id = <0x2FF>;
-			gear_ratio = <100>;
-			label = "Motor1";
-			status = "okay";
-			can_channel = <&canbus1>;
-			controllers = <&angle_pid_2 &speed_pid_2>;
-			capabilities = "angle", "speed", "torque";
-		};
-	};
-
-	pid {
-		angle_pid_1: angle_pid_1 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <700>;
-			k_i = <3>;
-			k_d = <800>;
-		};
-		speed_pid_1: speed_pid_1 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <80>;
-			k_i = <20>;
-			k_d = <20>;
-		};
-		angle_pid_2: angle_pid_2 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <100>;
-			k_i = <100>;
-			k_d = <100>;
-		};
-		speed_pid_2: speed_pid_2 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <100>;
-			k_i = <20>;
-			k_d = <20>;
-		};
-	};
+    
 };
 
 &clk_lsi {
@@ -167,13 +110,21 @@
 	status = "okay";
 };
 
-&usart1 {
-	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pb7>;
-	pinctrl-names = "default";
-	current-speed = <115200>;
-	status = "okay";
-	data-bits = <8>;
-	stop-bits = "1";
+&usart3 {
+    pinctrl-0 = <&usart3_tx_pc10 &usart3_rx_pc11>;
+    pinctrl-names = "default";
+    current-speed = <100000>;
+    status = "okay";
+    data-bits = <8>;
+    stop-bits = "2";
+    parity = "even";
+    dmas = <&dma1 1 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
+		   <&dma1 3 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
+    dma-names = "rx", "tx";
+};
+
+&dma1 {
+    status = "okay";
 };
 
 &usart6 {

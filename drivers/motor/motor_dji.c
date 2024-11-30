@@ -6,6 +6,7 @@
 #include "motor_dji.h"
 #include "syscalls/pid.h"
 #include "zephyr/device.h"
+#include <string.h>
 #include <math.h>
 #include <soc.h>
 #include <stdbool.h>
@@ -113,7 +114,7 @@ int8_t dji_set_speed(const struct device *dev, float speed_rpm) {
     for (int i = 0; i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]); i++) {
         if (cfg->common.controller[i] == NULL)
             break;
-        if (pid_get_capability(cfg->common.controller[i], "speed")) {
+        if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
             pid_calc(cfg->common.controller[i]);
             data->current_mode_index = i;
         }
@@ -130,7 +131,7 @@ int8_t dji_set_angle(const struct device *dev, float angle) {
     for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
         if (cfg->common.controller[i] == NULL)
             break;
-        if (pid_get_capability(cfg->common.controller[i], "angle")) {
+        if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
             pid_calc(cfg->common.controller[i]);
             data->current_mode_index = i;
         }
@@ -144,11 +145,12 @@ int8_t dji_set_torque(const struct device *dev, float torque) {
     const struct dji_motor_config *cfg  = dev->config;
 
     data->target_torque = torque;
-    for (int i = 0; i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]); i++) {
-        if (cfg->common.controller[i] == NULL) {
-            data->current_mode_index = -1;
-            data->target_current     = 0;
+    for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
+        if (cfg->common.controller[i] == NULL)
             break;
+        if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
+            pid_calc(cfg->common.controller[i]);
+            data->current_mode_index = i;
         }
     }
     // ctrl_struct->current[id] = pid_calc(dev);
@@ -196,13 +198,16 @@ int dji_init(const struct device *dev) {
              i++) {
             if (cfg->common.controller[i] == NULL)
                 break;
-            struct device *dev = (struct device *)cfg->common.controller[i];
-            if (pid_get_capability(dev, "speed") == 0) {
+            if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
                 pid_reg_input(cfg->common.controller[i], &data->common.rpm, &data->target_rpm);
                 pid_reg_output(cfg->common.controller[i], &data->target_torque);
-            } else if (pid_get_capability(dev, "angle") == 0) {
+            } else if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
                 pid_reg_input(cfg->common.controller[i], &data->common.angle, &data->target_angle);
                 pid_reg_output(cfg->common.controller[i], &data->target_rpm);
+            } else if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
+                pid_reg_input(cfg->common.controller[i], &data->common.torque,
+                              &data->target_torque);
+                pid_reg_output(cfg->common.controller[i], &data->target_current);
             } else {
                 LOG_ERR("Unsupported motor mode");
                 return -1;
@@ -307,7 +312,7 @@ static int delta_degree(uint16_t angle, uint16_t prev_angle) {
 static void can_pack_add(uint8_t *data, struct device *motor_dev, uint8_t num) {
     struct dji_motor_data *data_temp = motor_dev->data;
 
-    int16_t value = data_temp->target_current;
+    int16_t value = to16t(data_temp->target_current);
 
     data[num * 2]     = HIGH_BYTE(value);
     data[num * 2 + 1] = LOW_BYTE(value);
@@ -352,16 +357,20 @@ static void motor_calc(const struct device *dev) {
                                config_temp->gear_ratio;
     // If current_mode_index is -1, it means the motor is in torque control.
     // From the current mode index to the end of the controller array
+    bool torque_proceeded = false;
     for (int i = data_temp->current_mode_index; i < SIZE_OF_ARRAY(config_temp->common.controller);
          i++) {
         if (config_temp->common.controller[i] == NULL) {
-            data_temp->target_current =
-                to16t(data_temp->target_torque * convert[data_temp->convert_num][TORQUE2CURRENT] /
-                      config_temp->gear_ratio);
+            if (torque_proceeded)
+                break;
+            data_temp->target_current = data_temp->target_torque / config_temp->gear_ratio *
+                                        convert[data_temp->convert_num][TORQUE2CURRENT];
             break;
         }
         pid_calc(config_temp->common.controller[i]);
-        if (pid_get_capability(config_temp->common.controller[i], "mit"))
+        if (strcmp(config_temp->common.capabilities[i], "torque") == 0)
+            torque_proceeded = true;
+        else if (strcmp(config_temp->common.capabilities[i], "mit") == 0)
             break;
     }
 }

@@ -70,18 +70,19 @@ struct dji_motor_data {
     int8_t   missed_times;
 
     // Target
-    float   target_angle;
-    float   target_rpm;
-    float   target_torque;
-    int16_t target_current;
+    float target_angle;
+    float target_rpm;
+    float target_torque;
+    float target_current;
 };
 
 struct dji_motor_config {
     struct motor_driver_config common;
-    float                      gear_ratio;
-    bool                       is_gm6020;
-    bool                       is_m3508;
-    bool                       is_m2006;
+
+    float gear_ratio;
+    bool  is_gm6020;
+    bool  is_m3508;
+    bool  is_m2006;
 };
 
 // 全局变量声明
