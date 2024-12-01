@@ -33,7 +33,7 @@
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.errorSquiggles": "disabled",
     "stm32-for-vscode.armToolchainPath": false,
-    "cortex-debug.variableUseNaturalFormat": true,
+    "cortex-debug.variableUseNaturalFormat": false,
     "terminal.integrated.defaultProfile.linux": "Zephyr IDE Terminal",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cmake.configureOnOpen": false,

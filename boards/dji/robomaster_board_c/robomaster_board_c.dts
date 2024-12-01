@@ -223,29 +223,6 @@ zephyr_udc0: &usbotg_fs {
 			&spi1_sck_pb3>;
 	pinctrl-names="default";
 
-	bmi08x_accel: bmi08x@0 {
-		compatible = "bosch,bmi08x-accel";
-		reg = <0>;
-		int-gpios = <&gpioc 4 GPIO_ACTIVE_HIGH>;
-		spi-max-frequency = <10000000>;
-		int1-map-io = <0x01>;
-		int2-map-io = <0x00>;
-		int1-conf-io = <0x04>;
-		int2-conf-io = <0x00>;
-		accel-hz = "800";
-		accel-fs = <24>;
-	};
-
-	bmi08x_gyro: bmi08x@1 {
-		compatible = "bosch,bmi08x-gyro";
-		reg = <1>;
-		int-gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>;
-		spi-max-frequency = <10000000>;
-		int3-4-map-io = <0x01>;
-		int3-4-conf-io = <0x02>;
-		gyro-hz = "1000_116";
-		gyro-fs = <1000>;
-	};
 };
 
 // spi1_pins: spi1-1 {
