@@ -5,14 +5,14 @@
  */
 
 /dts-v1/;
-#include <st/f4/stm32f407Xg.dtsi>
-#include <st/f4/stm32f407i(e-g)tx-pinctrl.dtsi>
+#include <st/h7/stm32h723Xg.dtsi>
+#include <st/h7/stm32h723v(e-g)tx-pinctrl.dtsi>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 // #include "robomaster_board_c-pinctrl.dtsi"
 
 / {
-	model = "DJI Robomaster Development Board C";
-	compatible = "dji,robomaster-board-c";
+	model = "Damiao DM-MC02";
+	compatible = "damiao,dm-mc02";
 
 	chosen {
 		zephyr,console = &usart6;

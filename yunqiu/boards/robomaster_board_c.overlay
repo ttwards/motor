@@ -2,11 +2,11 @@
 	rm_motor {
 		motor0: motor0{
 			compatible = "dji,motor";
-            is_m2006;
+            is_m3508;
 			id = <1>;
             rx_id = <0x201>;
             tx_id = <0x200>;
-			gear_ratio = <3600>;
+			gear_ratio = <1920>;
 			status = "okay";
 			can_channel = <&canbus1>;
 			controllers = <&angle_pid_1 &speed_pid_1>;
@@ -15,11 +15,11 @@
 
 		motor1: motor1{
 			compatible = "dji,motor";
-            is_m2006;
+            is_m3508;
 			id = <2>;
             rx_id = <0x202>;
             tx_id = <0x200>;
-			gear_ratio = <3600>;
+			gear_ratio = <1920>;
 			status = "okay";
 			can_channel = <&canbus1>;
 			controllers = <&angle_pid_2 &speed_pid_2>;
@@ -38,7 +38,7 @@
 		speed_pid_1: speed_pid_1 {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			k_p = <180>;
+			k_p = <880>;
 			k_i = <20>;
 			k_d = <20>;
 		};
@@ -52,7 +52,7 @@
 		speed_pid_2: speed_pid_2 {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			k_p = <180>;
+			k_p = <880>;
 			k_i = <20>;
 			k_d = <20>;
 		};

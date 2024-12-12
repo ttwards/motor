@@ -5,31 +5,6 @@
 # as the module Kconfig entry point (see zephyr/module.yml). You can browse
 # module options by going to Zephyr -> Modules in Kconfig.
 
-# rsource "drivers/Kconfig"
+rsource "drivers/Kconfig"
 # rsource "lib/Kconfig"
 
-config MOTOR_DJI
-    bool "Enable MOTOR_DJI"
-    default n
-
-config ARES_SBUS
-	bool "Enable SBUS"
-	default n
-
-config ARES_SBUS_INIT_PRIORITY
-	int "SBUS init priority"
-	default 90
-	help
-		fuck
-
-config MOTOR_LOG_LEVEL
-    int "Motor log level"
-    default 4
-    help
-    	The log level of motor driver
-
-config MOTOR_INIT_PRIORITY
-    int "Motor init priority"
-    default 90
-    help
-    	The init priority of motor driver

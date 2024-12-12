@@ -29,7 +29,8 @@ void sbus_parseframe(const struct device *dev) { // 检查帧是否为空
     // 数据转换成通道值
     data->channels[0] = (data->data[1] >> 0 | (data->data[2] << 8)) & 0x07FF;
     data->channels[1] = (data->data[2] >> 3 | (data->data[3] << 5)) & 0x07FF;
-    data->channels[2] = (data->data[3] >> 6 | (data->data[4] << 2) | data->data[5] << 10) & 0x07FF;
+    data->channels[2] =
+        (data->data[3] >> 6 | (data->data[4] << 2) | data->data[5] << 10) & 0x07FF;
     data->channels[3] = (data->data[5] >> 1 | (data->data[6] << 7)) & 0x07FF;
     data->channels[4] = (data->data[6] >> 4 | (data->data[7] << 4)) & 0x07FF;
     data->channels[5] = (data->data[7] >> 7 | (data->data[8] << 1) | data->data[9] << 9) & 0x07FF;
@@ -202,19 +203,23 @@ static struct sbus_driver_api sbus_api = {
 };
 
 #define SBUS_DT_DATA_DEFINE(inst) static struct sbus_driver_data sbus_data_##inst = {0};
-#define SBUS_DT_CFG_DEFINE(inst)                                                                   \
-    static const struct sbus_driver_config sbus_cfg_##inst = {                                     \
-        .startByte     = DT_PROP(DT_DRV_INST(inst), start_byte),                                   \
-        .endByte       = DT_PROP(DT_DRV_INST(inst), end_byte),                                     \
-        .frameSize     = DT_PROP(DT_DRV_INST(inst), frame_size),                                   \
-        .inputChannels = DT_PROP(DT_DRV_INST(inst), input_channels),                               \
+#define SBUS_DT_CFG_DEFINE(inst)                                                                 \
+    static const struct sbus_driver_config sbus_cfg_##inst = {                                   \
+        .startByte     = DT_PROP(DT_DRV_INST(inst), start_byte),                                 \
+        .endByte       = DT_PROP(DT_DRV_INST(inst), end_byte),                                   \
+        .frameSize     = DT_PROP(DT_DRV_INST(inst), frame_size),                                 \
+        .inputChannels = DT_PROP(DT_DRV_INST(inst), input_channels),                             \
     };
 
-#define SBUS_DEVICE_INIT(inst)                                                                     \
-    SBUS_DT_DATA_DEFINE(inst);                                                                     \
-    SBUS_DT_CFG_DEFINE(inst);                                                                      \
-    DEVICE_DT_INST_DEFINE(inst, sbus_init, NULL, &sbus_data_##inst, &sbus_cfg_##inst, POST_KERNEL, \
-                          CONFIG_ARES_SBUS_INIT_PRIORITY, &sbus_api);
+#define SBUS_DT_DEVICE_DEFINE(inst)                                                              \
+    DEVICE_DT_INST_DEFINE(inst, sbus_init, NULL, &sbus_data_##inst, &sbus_cfg_##inst,            \
+                          POST_KERNEL, CONFIG_SBUS_INIT_PRIORITY, &sbus_api);
+
+#define SBUS_DEVICE_INIT(inst)                                                                   \
+    SBUS_DT_DATA_DEFINE(inst);                                                                   \
+    SBUS_DT_CFG_DEFINE(inst);                                                                    \
+    SBUS_DT_DEVICE_DEFINE(inst);
 
 DT_INST_FOREACH_STATUS_OKAY(SBUS_DEVICE_INIT)
+
 #endif

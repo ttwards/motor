@@ -37,9 +37,7 @@
 extern "C" {
 #endif
 
-#define MOTOR_MODE_ANGLE  0
-#define MOTOR_MODE_SPEED  1
-#define MOTOR_MODE_TORQUE 2
+enum motor_mode { MIT, PV, VO, MULTILOOP };
 
 struct motor_driver_config {
     /** Physical device */
@@ -57,10 +55,11 @@ struct motor_driver_config {
 };
 
 struct motor_driver_data {
-    float angle;
-    float rpm;
-    float torque;
-    float temperature;
+    float           angle;
+    float           rpm;
+    float           torque;
+    float           temperature;
+    enum motor_mode mode;
 };
 
 /**

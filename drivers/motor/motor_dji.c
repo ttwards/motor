@@ -6,6 +6,7 @@
 #include "motor_dji.h"
 #include "syscalls/pid.h"
 #include "zephyr/device.h"
+#include "zephyr/devicetree.h"
 #include <string.h>
 #include <math.h>
 #include <soc.h>
@@ -21,18 +22,17 @@
 
 LOG_MODULE_REGISTER(motor_dji, CONFIG_MOTOR_LOG_LEVEL);
 
-const struct device *motor_devices[] = {
-    DT_FOREACH_CHILD_STATUS_OKAY_SEP(MOTOR_PATH, DJI_DEVICE_POINTER, (, ))};
+const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DJI_DEVICE_POINTER)};
 
 const struct device *can_devices[] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
 
-#define CTRL_STRUCT_DATA(node_id)                                                                  \
-    {                                                                                              \
-        .can_dev = DT_GET_CANPHY_BY_BUS(node_id),                                                  \
-        .flags   = 0,                                                                              \
-        .full    = {{false}},                                                                      \
-        .mask    = 0,                                                                              \
+#define CTRL_STRUCT_DATA(node_id)                                                                \
+    {                                                                                            \
+        .can_dev = DT_GET_CANPHY_BY_BUS(node_id),                                                \
+        .flags   = 0,                                                                            \
+        .full    = {{false}},                                                                    \
+        .mask    = 0,                                                                            \
     }
 
 static int frames_id(int tx_id) {
@@ -89,8 +89,8 @@ struct motor_controller motor_cans[CAN_COUNT] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
 #pragma GCC diagnostic pop
 
-K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, motor_cans, can_devices,
-                motor_devices, CAN_SEND_PRIORITY, 0, 10);
+K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, motor_cans,
+                can_devices, motor_devices, CAN_SEND_PRIORITY, 0, 10);
 
 static inline motor_id_t canbus_id(const struct device *dev) {
     for (int i = 0; i < MOTOR_COUNT; i++) {
@@ -146,8 +146,10 @@ int8_t dji_set_torque(const struct device *dev, float torque) {
 
     data->target_torque = torque;
     for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
-        if (cfg->common.controller[i] == NULL)
+        if (cfg->common.controller[i] == NULL) {
+            data->current_mode_index = i + 1;
             break;
+        }
         if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
             pid_calc(cfg->common.controller[i]);
             data->current_mode_index = i;
@@ -202,7 +204,8 @@ int dji_init(const struct device *dev) {
                 pid_reg_input(cfg->common.controller[i], &data->common.rpm, &data->target_rpm);
                 pid_reg_output(cfg->common.controller[i], &data->target_torque);
             } else if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
-                pid_reg_input(cfg->common.controller[i], &data->common.angle, &data->target_angle);
+                pid_reg_input(cfg->common.controller[i], &data->common.angle,
+                              &data->target_angle);
                 pid_reg_output(cfg->common.controller[i], &data->target_rpm);
             } else if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
                 pid_reg_input(cfg->common.controller[i], &data->common.torque,

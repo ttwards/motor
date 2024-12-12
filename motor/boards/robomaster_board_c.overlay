@@ -105,7 +105,7 @@
 		int2-map-io = <0>;
         int1-conf-io = <0>;
 		int2-conf-io = <0>;
-		// 其他所需属性...
+		
     };
 
     bmi08x_gyro: bmi08x_gyro@1{

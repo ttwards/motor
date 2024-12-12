@@ -1,0 +1,21 @@
+identifier: dm_mc02
+name: Damiao MC02
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+ram: 192
+flash: 512
+supported:
+  - counter
+  - gpio
+  - watchdog
+  - can
+testing:
+  ignore_tags:
+    - net
+    - shell
+    - console
+vendor: dji

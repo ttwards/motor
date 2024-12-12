@@ -1,0 +1,5 @@
+board:
+  name: dm_mc02
+  vendor: damiao
+  socs:
+    - name: stm32h723vgt6

@@ -20,11 +20,11 @@
 
 LOG_MODULE_REGISTER(pid_mit, CONFIG_MOTOR_LOG_LEVEL);
 
-#define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
-    {                                                                                              \
-        .k_p = DT_PROP(node_id, k_p) / 10000.0f,                                                   \
-        .k_i = DT_PROP(node_id, k_i) / 100.0f,                                                     \
-        .k_d = DT_PROP(node_id, k_d) / 100.0f,                                                     \
+#define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                 \
+    {                                                                                            \
+        .k_p = DT_PROP(node_id, k_p) / 10000.0f,                                                 \
+        .k_i = DT_PROP(node_id, k_i) / 100.0f,                                                   \
+        .k_d = DT_PROP(node_id, k_d) / 100.0f,                                                   \
     }
 
 static bool float_equal(float a, float b) { return fabsf(a - b) < 0.0001f; }
@@ -46,8 +46,8 @@ struct pid_mit_config {
     const struct pid_single_config common;
 };
 
-static struct pid_single_config pid_mit_get_params(const struct device *pid_dev) {
-    return ((struct pid_mit_config *)pid_dev->config)->common;
+static const struct pid_single_config *pid_mit_get_params(const struct device *pid_dev) {
+    return &((struct pid_mit_config *)pid_dev->config)->common;
 }
 
 static void pid_mit_calc(const struct device *pid_dev) {
@@ -107,26 +107,27 @@ static struct pid_driver_api pid_api_funcs = {.pid_calc       = pid_mit_calc,
                                               .pid_reg_output = pid_mit_reg_output,
                                               .pid_get_params = pid_mit_get_params};
 
-#define PID_CONFIG_DEFINE(inst)                                                                    \
-    static const struct pid_mit_config pid_mit_cfg_##inst = {                                      \
+#define PID_CONFIG_DEFINE(inst)                                                                  \
+    static const struct pid_mit_config pid_mit_cfg_##inst = {                                    \
         .common = PID_SINGLE_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))};
 
-#define PID_DATA_DEFINE(inst)                                                                      \
-    static struct pid_mit_data pid_mit_data_##inst = {.err_integral = 0,                           \
-                                                      .err_derivate = 0,                           \
-                                                      .curr         = NULL,                        \
-                                                      .ref          = NULL,                        \
-                                                      .output       = NULL,                        \
-                                                      .curr_time    = NULL,                        \
-                                                      .prev_time    = NULL,                        \
-                                                      .detri_curr   = NULL,                        \
+#define PID_DATA_DEFINE(inst)                                                                    \
+    static struct pid_mit_data pid_mit_data_##inst = {.err_integral = 0,                         \
+                                                      .err_derivate = 0,                         \
+                                                      .curr         = NULL,                      \
+                                                      .ref          = NULL,                      \
+                                                      .output       = NULL,                      \
+                                                      .curr_time    = NULL,                      \
+                                                      .prev_time    = NULL,                      \
+                                                      .detri_curr   = NULL,                      \
                                                       .detri_ref    = NULL};
 
-#define PID_INST(inst)                                                                             \
-    PID_CONFIG_DEFINE(inst)                                                                        \
-    PID_DATA_DEFINE(inst)                                                                          \
-    PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, &pid_mit_data_##inst, &pid_mit_cfg_##inst, \
-                         POST_KERNEL, CONFIG_MOTOR_INIT_PRIORITY, &pid_api_funcs);
+#define PID_INST(inst)                                                                           \
+    PID_CONFIG_DEFINE(inst)                                                                      \
+    PID_DATA_DEFINE(inst)                                                                        \
+    PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, &pid_mit_data_##inst,                    \
+                         &pid_mit_cfg_##inst, POST_KERNEL, CONFIG_MOTOR_INIT_PRIORITY,           \
+                         &pid_api_funcs);
 
 DT_INST_FOREACH_STATUS_OKAY(PID_INST)
 

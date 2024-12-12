@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define PID_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)            \
+#define PID_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \
     DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
 
 #define NORMAL_PID 0U
@@ -56,7 +56,7 @@ typedef void (*pid_api_reg_input_t)(const struct device *dev, float *curr, float
 
 typedef void (*pid_api_det_input_t)(const struct device *dev, float *curr, float *ref);
 
-typedef struct pid_single_config (*pid_get_params_t)(const struct device *dev);
+typedef const struct pid_single_config *(*pid_get_params_t)(const struct device *dev);
 
 typedef void (*pid_api_reg_time_t)(const struct device *dev, uint32_t *curr_time,
                                    uint32_t *prev_time);
@@ -125,16 +125,16 @@ static inline void z_impl_pid_reg_output(const struct device *dev, float *output
     }
 }
 
-__syscall struct pid_single_config pid_get_params(const struct device *dev);
+__syscall const struct pid_single_config *pid_get_params(const struct device *dev);
 
-static inline struct pid_single_config z_impl_pid_get_params(const struct device *dev) {
+static inline const struct pid_single_config *z_impl_pid_get_params(const struct device *dev) {
     const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
 
     if (api->pid_get_params != NULL) {
         return api->pid_get_params(dev);
     }
-    struct pid_single_config ret = {0};
-    return ret;
+    const struct pid_single_config ret = {0};
+    return &ret;
 }
 
 #ifdef __cplusplus
