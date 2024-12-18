@@ -7,6 +7,7 @@
 #define PID_H
 
 #include "zephyr/toolchain.h"
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -133,8 +134,7 @@ static inline const struct pid_single_config *z_impl_pid_get_params(const struct
     if (api->pid_get_params != NULL) {
         return api->pid_get_params(dev);
     }
-    const struct pid_single_config ret = {0};
-    return &ret;
+    return NULL;
 }
 
 #ifdef __cplusplus

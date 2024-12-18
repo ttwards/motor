@@ -66,8 +66,7 @@ static void pid_mit_calc(const struct device *pid_dev) {
     if (!float_equal(kd, 0)) {
         pid_data->err_derivate = kd * (*(pid_data->detri_ref) - *(pid_data->detri_curr)) / deltaT;
     }
-    //   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
-    //           to16t(kd * 1000000 * err / deltaT));
+
     *(pid_data->output) = kp * (err + pid_data->err_integral + pid_data->err_derivate);
     return;
 }

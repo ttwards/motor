@@ -7,14 +7,14 @@
 #ifndef MOTOR_DM_H
 #define MOTOR_DM_H
 
-#define _USE_MATH_DEFINES
+#include "zephyr/kernel.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/can.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/motor.h>
 #include <zephyr/drivers/pid.h>
-#include <math.h>
+#include <zephyr/drivers/can.h>
 
 /*  canbus_id_t specifies the ID of the CAN bus the motor is on
         which is defined in motor_devices[] */
@@ -34,50 +34,32 @@ typedef uint16_t motor_id_t;
 
 #define PI 3.14159265f
 
-struct motor_controller {
-    const struct device *can_dev;
+#define RAD2ROUND 1.0f / (2 * PI)
+#define RAD2DEG   180.0f / PI
 
-    int            ids[8];
-    bool           full[5];
-    uint8_t        mapping[5][4];
-    uint8_t        flags;
-    struct device *motor_devs[8];
-    struct k_sem   thread_sem;
-};
+const int enable_frame[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC};
+const int disable_frame[]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD};
+const int set_zero_frame[]    = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE};
+const int clear_error_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB};
 
-const float RAD2ROUND          = 1.0f / (2 * PI);
-const float DM_J4310_2EC_V_MAX = 30.0f;
-const float DM_J4310_2EC_P_MAX = 12.5f;
-const float DM_J4310_2EC_T_MAX = 10.0f;
+#define CAN_SEND_STACK_SIZE 4096
+#define CAN_SEND_PRIORITY   -1
 
-const float DM_J4310_2EC_KP_MIN = 0.0f;
-const float DM_J4310_2EC_KP_MAX = 500.0f;
-const float DM_J4310_2EC_KD_MIN = 0.0f;
-const float DM_J4310_2EC_KD_MAX = 5.0f;
+#define SIZE_OF_ARRAY(x) (sizeof(x) / sizeof(x[0]))
 
 struct dm_motor_data {
     struct motor_driver_data common;
-    canbus_id_t              canbus_id;
-    struct motor_controller *ctrl_struct;
+
+    int tx_offset;
 
     // Control status
-    bool            online;
-    uint8_t         convert_num;
-    int8_t          current_mode_index;
-    enum motor_mode mode;
+    bool online;
 
-    // RAW DATA
-    uint16_t RAWangle;
-    uint16_t RAWprev_angle;
-    int32_t  RAWtorque;
-    int16_t  RAWrpm;
-    int8_t   RAWtemp_mos;
-    int8_t   RAWtemp_rotor;
-    uint32_t curr_time;
-    uint32_t prev_time;
-    int32_t  RAWangle_add;
-    int8_t   missed_times;
-    int8_t   err;
+    int8_t missed_times;
+    int8_t err;
+
+    // Process round
+    float delta_deg_sum; // Will be % by 360
 
     // Target
     float target_angle;
@@ -91,44 +73,93 @@ struct dm_motor_config {
     struct motor_driver_config common;
 
     float gear_ratio;
-    bool  is_gm6020;
-    bool  is_m3508;
-    bool  is_m2006;
 
     float v_max;
     float p_max;
     float t_max;
 };
 
-// 全局变量声明
-extern struct motor_controller motor_cans[];
+struct k_sem tx_queue_sem;
 
 // 函数声明
 void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
 
-// 如果需要在其他文件中使用以下函数，请取消对应函数定义中的 static 关键字
-int8_t dm_set_speed(const struct device *dev, float speed_rpm);
-int8_t dm_set_angle(const struct device *dev, float angle);
-int8_t dm_set_torque(const struct device *dev, float torque);
-float  dm_set_zero(const struct device *dev);
-float  dm_get_angle(const struct device *dev);
-float  dm_get_speed(const struct device *dev);
-float  dm_get_torque(const struct device *dev);
-int    dm_init(const struct device *dev);
+int   dm_motor_set_speed(const struct device *dev, float speed_rpm);
+int   dm_motor_set_angle(const struct device *dev, float angle);
+int   dm_motor_set_torque(const struct device *dev, float torque);
+int   dm_motor_set_mode(const struct device *dev, enum motor_mode mode);
+void  dm_motor_control(const struct device *dev, enum motor_cmd cmd);
+float dm_motor_get_angle(const struct device *dev);
+float dm_motor_get_speed(const struct device *dev);
+float dm_motor_get_torque(const struct device *dev);
 
 static const struct motor_driver_api motor_api_funcs = {
-    .motor_get_speed  = dm_get_speed,
-    .motor_get_torque = dm_get_torque,
-    .motor_get_angle  = dm_get_angle,
-    .motor_set_speed  = dm_set_speed,
-    .motor_set_torque = dm_set_torque,
-    .motor_set_angle  = dm_set_angle,
-    .motor_set_zero   = dm_set_zero,
+    .motor_get_speed  = dm_motor_get_speed,
+    .motor_get_torque = dm_motor_get_torque,
+    .motor_get_angle  = dm_motor_get_angle,
+    .motor_set_speed  = dm_motor_set_speed,
+    .motor_set_torque = dm_motor_set_torque,
+    .motor_set_angle  = dm_motor_set_angle,
+    .motor_control    = dm_motor_control,
+    .motor_set_mode   = dm_motor_set_mode,
 };
 
 extern const struct device *can_devices[];
 extern const struct device *motor_devices[];
 
-#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)
+#define MOTOR_COUNT            DT_NUM_INST_STATUS_OKAY(dm_motor)
+#define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst))(, )
+const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
+
+#define CAN_BUS_PATH DT_PATH(canbus)
+#define CAN_COUNT    DT_NUM_INST_STATUS_OKAY(vnd_canbus)
+
+#define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
+const struct device *can_devices[] = {
+    DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
+
+static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3);
+
+K_THREAD_DEFINE(dm_motor_ctrl_thread, CAN_SEND_STACK_SIZE, dm_motor_ctrl_entry, NULL, NULL, NULL,
+                CAN_SEND_PRIORITY, 0, 10);
+
+#define DMMOTOR_DATA_INST(inst)                                                                  \
+    static struct dm_motor_data dm_motor_data_##inst = {                                         \
+        .common        = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                    \
+        .tx_offset     = 0,                                                                      \
+        .online        = false,                                                                  \
+        .missed_times  = 0,                                                                      \
+        .err           = 0,                                                                      \
+        .delta_deg_sum = 0,                                                                      \
+        .target_angle  = 0,                                                                      \
+        .target_rpm    = 0,                                                                      \
+        .target_torque = 0,                                                                      \
+        .params        = {0, 0},                                                                 \
+    };
+
+#define DMMOTOR_CONFIG_INST(inst)                                                                \
+    static const struct dm_motor_config dm_motor_cfg_##inst = {                                  \
+        .common     = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                     \
+        .gear_ratio = (float)DT_PROP(DT_DRV_INST(inst), gear_ratio) / 100.0f,                    \
+        .v_max      = (float)DT_PROP(DT_DRV_INST(inst), v_max) / 10.0f,                          \
+        .p_max      = (float)DT_PROP(DT_DRV_INST(inst), p_max) / 10.0f,                          \
+        .t_max      = (float)DT_PROP(DT_DRV_INST(inst), t_max) / 10.0f,                          \
+    };
+
+#define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)        \
+    DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
+
+#define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)                                                   \
+    MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
+
+#define DMMOTOR_DEFINE_INST(inst)                                                                \
+    MOTOR_DEVICE_DT_INST_DEFINE(inst, dm_init, NULL, &dm_motor_data_##inst,                      \
+                                &dm_motor_cfg_##inst, POST_KERNEL, CONFIG_MOTOR_INIT_PRIORITY,   \
+                                &motor_api_funcs);
+
+#define DMMOTOR_INST(inst)                                                                       \
+    DMMOTOR_CONFIG_INST(inst)                                                                    \
+    DMMOTOR_DATA_INST(inst)                                                                      \
+    DMMOTOR_DEFINE_INST(inst)
 
 #endif // MOTOR_dm_H

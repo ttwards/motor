@@ -30,3 +30,12 @@ properties:
   capabilities:
     type: string-array
     required: true
+  v_max:
+    type: int
+    required: true
+  p_max:
+    type: int
+    required: true
+  t_max:
+    type: int
+    required: true

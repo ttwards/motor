@@ -11,4 +11,7 @@ add_subdirectory_ifdef(CONFIG_MOTOR_DJI pid)
 add_subdirectory_ifdef(CONFIG_MOTOR_MI motor)
 add_subdirectory_ifdef(CONFIG_MOTOR_MI pid)
 
+add_subdirectory_ifdef(CONFIG_MOTOR_DM motor)
+add_subdirectory_ifdef(CONFIG_MOTOR_DM pid)
+
 add_subdirectory_ifdef(CONFIG_ARES_SBUS transfer)

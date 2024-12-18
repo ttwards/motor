@@ -85,11 +85,11 @@ static int16_t to16t(float value) {
 static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-braces"
-struct motor_controller motor_cans[CAN_COUNT] = {
+struct motor_controller ctrl_structs[CAN_COUNT] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
 #pragma GCC diagnostic pop
 
-K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, motor_cans,
+K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, ctrl_structs,
                 can_devices, motor_devices, CAN_SEND_PRIORITY, 0, 10);
 
 static inline motor_id_t canbus_id(const struct device *dev) {
@@ -106,7 +106,7 @@ static inline motor_id_t motor_id(const struct device *dev) {
     return cfg->common.id - 1;
 }
 
-int8_t dji_set_speed(const struct device *dev, float speed_rpm) {
+int dji_set_speed(const struct device *dev, float speed_rpm) {
     struct dji_motor_data         *data = dev->data;
     const struct dji_motor_config *cfg  = dev->config;
 
@@ -123,7 +123,7 @@ int8_t dji_set_speed(const struct device *dev, float speed_rpm) {
     return 0;
 }
 
-int8_t dji_set_angle(const struct device *dev, float angle) {
+int dji_set_angle(const struct device *dev, float angle) {
     struct dji_motor_data         *data = dev->data;
     const struct dji_motor_config *cfg  = dev->config;
 
@@ -140,7 +140,7 @@ int8_t dji_set_angle(const struct device *dev, float angle) {
     return 0;
 }
 
-int8_t dji_set_torque(const struct device *dev, float torque) {
+int dji_set_torque(const struct device *dev, float torque) {
     struct dji_motor_data         *data = dev->data;
     const struct dji_motor_config *cfg  = dev->config;
 
@@ -159,11 +159,26 @@ int8_t dji_set_torque(const struct device *dev, float torque) {
     return 0;
 }
 
-float dji_set_zero(const struct device *dev) {
-    float                  curr_angle = dji_get_angle(dev);
-    struct dji_motor_data *data       = dev->data;
-    data->RAWangle_add                = 0;
-    return curr_angle;
+void dji_control(const struct device *dev, enum motor_cmd cmd) {
+    struct dji_motor_data         *data = dev->data;
+    const struct dji_motor_config *cfg  = dev->config;
+
+    struct can_frame frame;
+    frame.id = cfg->common.tx_id;
+
+    switch (cmd) {
+    case ENABLE_MOTOR: data->online = true; break;
+    case DISABLE_MOTOR: data->online = false; break;
+    case SET_ZERO_OFFSET:
+        data->RAWangle_add = 0;
+        data->RAWangle     = 0;
+        break;
+    case CLEAR_PID: break;
+    case CLEAR_ERROR:
+        data->missed_times = 0;
+        data->online       = true;
+        break;
+    }
 }
 
 float dji_get_angle(const struct device *dev) {
@@ -183,9 +198,9 @@ float dji_get_torque(const struct device *dev) {
 
 int dji_init(const struct device *dev) {
     /*
-                  Each motor find their own controller and write their own data,
-       which cannot be done at the first init because the other motors have not
-       been instantiated.
+        Each motor find their own controller and write their own data,
+        which cannot be done at the first init because the other motors have not
+        been instantiated.
     */
     if (dev) {
         const struct dji_motor_config *cfg      = dev->config;
@@ -379,7 +394,7 @@ static void motor_calc(const struct device *dev) {
 }
 
 static struct k_sem tx_queue_sem;
-struct can_frame    txframe[CAN_COUNT][5];
+struct can_frame    txframe;
 
 static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3) {
     k_sem_init(&tx_queue_sem, 24, 24); // 初始化信号量
@@ -392,7 +407,7 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
             ctrl_struct[i].thread_sem = ctrl_struct[0].thread_sem;
         }
         int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_struct[i], &filter20x);
-        if (err != 0)
+        if (err < 0)
             LOG_ERR("Error adding CAN filter (err %d)", err);
         // If you recieved an error here, remember that 2# CAN of STM32 is in slave
         // mode and does not have an independent filter. If that is the issue, you
@@ -418,14 +433,14 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
                         }
                     }
                     if (packed) {
-                        txframe[i][j].id    = txframe_id(j);
-                        txframe[i][j].dlc   = 8;
-                        txframe[i][j].flags = 0;
-                        memcpy(txframe[i][j].data, data, sizeof(data));
+                        txframe.id    = txframe_id(j);
+                        txframe.dlc   = 8;
+                        txframe.flags = 0;
+                        memcpy(txframe.data, data, sizeof(data));
                         can_dev = (struct device *)ctrl_struct[i].can_dev;
                         err     = k_sem_take(&tx_queue_sem, K_NO_WAIT);
                         if (err == 0)
-                            err = can_send(can_dev, &txframe[i][j], K_NO_WAIT, can_tx_callback,
+                            err = can_send(can_dev, &txframe, K_NO_WAIT, can_tx_callback,
                                            &tx_queue_sem);
                         if (err != 0 && err != -EAGAIN && err != -EBUSY)
                             LOG_ERR("Error sending CAN frame (err %d)", err);

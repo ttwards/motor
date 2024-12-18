@@ -12,7 +12,7 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-                "interface/stlink.cfg",
+                "interface/cmsis-dap.cfg",
                 "target/stm32f4x.cfg"
                 // "esp32dap.cfg"
             ],
@@ -36,7 +36,7 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-                "interface/stlink.cfg",
+                "interface/cmsis-dap.cfg",
                 "target/stm32f4x.cfg"
             ],
             "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"

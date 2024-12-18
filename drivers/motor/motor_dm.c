@@ -1,80 +1,120 @@
-#include <cstdint>
+/*	
+ * Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#include <errno.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include "motor_dm.h"
+#include "syscalls/kernel.h"
 #include "zephyr/drivers/can.h"
+#include "zephyr/drivers/motor.h"
 #include "zephyr/drivers/pid.h"
 
 #define DT_DRV_COMPAT dm_motor
 
 LOG_MODULE_REGISTER(motor_dm, CONFIG_MOTOR_LOG_LEVEL);
 
-#define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst)),
-const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
+/**
+ * @brief Converts an unsigned integer to a float, given range and number of bits.
+ *
+ * This function takes an unsigned integer and maps it to a float value within
+ * the specified range [x_min, x_max] based on the number of bits.
+ *
+ * @param x_int The unsigned integer value to be converted.
+ * @param x_min The minimum value of the target float range.
+ * @param x_max The maximum value of the target float range.
+ * @param bits The number of bits representing the unsigned integer.
+ * @return The corresponding float value within the range [x_min, x_max].
+ */
 
-#define CAN_BUS_PATH                DT_PATH(canbus)
-#define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
-const struct device *can_devices[] = {
-    DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
-
-uint8_t array_enable_motor[8]     = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfc};
-uint8_t array_disable_motor[8]    = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd};
-uint8_t array_save_zero_offset[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe};
-uint8_t array_error_clear[8]      = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfb};
+static inline float uint_to_float(int x_int, float x_min, float x_max, int bits) {
+    /// converts unsigned int to float, given range and number of bits ///
+    float span   = x_max - x_min;
+    float offset = x_min;
+    return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
+}
 
 /**
- * @brief 将 float 类型转换为 int16_t，包含溢出处理和四舍五入。
+ * @brief Converts a float to an unsigned int, given range and number of bits.
  *
- * @param value 要转换的浮点数。
- * @return 转换后的 int16_t 值。
+ * This function takes a floating-point number and converts it to an unsigned
+ * integer representation based on the specified range and number of bits.
+ *
+ * @param x The floating-point number to convert.
+ * @param x_min The minimum value of the range.
+ * @param x_max The maximum value of the range.
+ * @param bits The number of bits for the unsigned integer representation.
+ *
+ * @return The unsigned integer representation of the floating-point number.
  */
-static int16_t to16t(float value, float min, float max) {
-    min = (min < INT16_MIN) ? INT16_MIN : min;
-    max = (max > INT16_MAX) ? INT16_MAX : max;
-    // 溢出处理
-    if (value > max) {
-        return max;
-    } else if (value < min) {
-        return min;
-    } else {
-        return (int16_t)value;
+static inline int float_to_uint(float x, float x_min, float x_max, int bits) {
+    /// Converts a float to an unsigned int, given range and number of bits
+    float span   = x_max - x_min;
+    float offset = x_min;
+    return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
+}
+
+static void can_tx_callback(const struct device *can_dev, int error, void *user_data) {
+    struct k_sem *queue_sem = user_data;
+    if (!error)
+        k_sem_give(queue_sem);
+}
+
+void dm_init(const struct device *dev) {
+    struct dm_motor_data         *data = dev->data;
+    const struct dm_motor_config *cfg  = dev->config;
+    can_start(cfg->common.phy);
+}
+
+void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
+    struct dm_motor_data         *data = dev->data;
+    const struct dm_motor_config *cfg  = dev->config;
+
+    struct can_frame frame;
+    frame.id    = cfg->common.tx_id;
+    frame.flags = 0;
+
+    int err = 0;
+
+    switch (cmd) {
+    case ENABLE_MOTOR:
+        data->online = true;
+        memcpy(frame.data, enable_frame, 8);
+        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        break;
+    case DISABLE_MOTOR:
+        data->online = false;
+        memcpy(frame.data, disable_frame, 8);
+        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        break;
+    case SET_ZERO_OFFSET: memcpy(frame.data, set_zero_frame, 8); break;
+    case CLEAR_PID: memset(&data->params, 0, sizeof(data->params)); break;
+    case CLEAR_ERROR:
+        memcpy(frame.data, clear_error_frame, 8);
+        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        break;
+    }
+    if (err != 0) {
+        LOG_ERR("Failed to send CAN frame: %d", err);
     }
 }
 
-static int16_t to12t(float value, float min, float max) {
-    min = (min < INT12_MIN) ? INT12_MIN : min;
-    max = (max > INT12_MAX) ? INT12_MAX : max;
-    // 溢出处理
-    if (value > max) {
-        return max;
-    } else if (value < min) {
-        return min;
-    } else {
-        return (int16_t)value;
-    }
-}
-
-static inline uint16_t scale(float value, float v_max, float v_min, int digits) {
-    int   range     = (1 << digits) - 1;
-    float scale_sum = range / (v_max - v_min);
-    int   scaled    = scale_sum * value;
-    if (scaled > range)
-        scaled = range;
-    return scaled;
-}
-
-void dm_motor_pack(struct device *dev, struct can_frame *frame) {
-    uint16_t              pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp;
-    uint8_t              *pbuf, *vbuf;
-    struct dm_motor_data *data = dev->data;
+void dm_motor_pack(const struct device *dev, struct can_frame *frame) {
+    uint16_t                      pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp;
+    uint8_t                      *pbuf, *vbuf;
+    struct dm_motor_data         *data = dev->data;
+    const struct dm_motor_config *cfg  = dev->config;
     switch (data->common.mode) {
     case MIT:
-        pos_tmp = scale(data->target_angle, -cfg->p_max, cfg->p_max, 16);
-        vel_tmp = scale(data->target_rpm, -cfg->v_max, cfg->v_max, 12);
-        tor_tmp = scale(data->target_torque, -cfg->t_max, cfg->t_max, 12);
-        kp_tmp  = scale(data->params.k_p, DM_J4310_2EC_KP_MIN, DM_J4310_2EC_KP_MAX, 12);
-        kd_tmp  = scale(data->params.k_d, DM_J4310_2EC_KD_MIN, DM_J4310_2EC_KD_MAX, 12);
+        pos_tmp = uint_to_float(data->target_angle, -cfg->p_max, cfg->p_max, 16);
+        vel_tmp = uint_to_float(data->target_rpm, -cfg->v_max, cfg->v_max, 12);
+        tor_tmp = uint_to_float(data->target_torque, -cfg->t_max, cfg->t_max, 12);
+        kp_tmp  = uint_to_float(data->params.k_p, 0, 500, 12);
+        kd_tmp  = uint_to_float(data->params.k_d, 0, 5, 12);
 
         frame->data[0] = (pos_tmp >> 8);
         frame->data[1] = pos_tmp;
@@ -110,37 +150,64 @@ void dm_motor_pack(struct device *dev, struct can_frame *frame) {
     }
 }
 
-int8_t dm_motor_set_mode(const struct device *dev, enum motor_mode mode) {
+float dm_motor_get_angle(const struct device *dev) {
+    struct dm_motor_data *data = dev->data;
+    return data->common.angle;
+}
+
+float dm_motor_get_speed(const struct device *dev) {
+    struct dm_motor_data *data = dev->data;
+    return data->common.rpm;
+}
+
+float dm_motor_get_torque(const struct device *dev) {
+    struct dm_motor_data *data = dev->data;
+    return data->common.torque;
+}
+
+int dm_motor_set_mode(const struct device *dev, enum motor_mode mode) {
     struct dm_motor_data         *data = dev->data;
     const struct dm_motor_config *cfg  = dev->config;
     char                          mode_str[10];
 
-    data->mode = mode;
+    data->common.mode = mode;
 
     switch (mode) {
-    case MIT: strcpy(mode_str, "mit"); break;
-    case PV: strcpy(mode_str, "pv"); break;
-    case VO: strcpy(mode_str, "vo"); break;
-    case MULTILOOP: strcpy(mode_str, "multiloop"); break;
+    case MIT:
+        strcpy(mode_str, "mit");
+        data->tx_offset = 0x0;
+        break;
+    case PV:
+        strcpy(mode_str, "pv");
+        data->tx_offset = 0x100;
+        break;
+    case VO:
+        strcpy(mode_str, "vo");
+        data->tx_offset = 0x200;
+        break;
+    case MULTILOOP:
+        data->online = false;
+        return -ENOSYS;
+        break;
     default: break;
     }
 
-    for (int i = 0; i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]); i++) {
+    for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
         if (cfg->common.controller[i] == NULL)
             break;
         if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
-            pid_calc(cfg->common.controller[i]);
-            data->current_mode_index = i;
-            data->mode               = mode;
-            data->params.k_p         = 0;
-            data->params.k_d         = 0;
+            const struct pid_single_config *params = pid_get_params(cfg->common.controller[i]);
+
+            data->common.mode = mode;
+            data->params.k_p  = params->k_p;
+            data->params.k_d  = params->k_d;
             break;
         }
     }
     return 0;
 }
 
-int8_t dm_motor_set_torque(const struct device *dev, float torque) {
+int dm_motor_set_torque(const struct device *dev, float torque) {
     struct dm_motor_data         *data = dev->data;
     const struct dm_motor_config *cfg  = dev->config;
 
@@ -154,9 +221,8 @@ int8_t dm_motor_set_torque(const struct device *dev, float torque) {
     return 0;
 }
 
-int8_t dm_motor_set_speed(const struct device *dev, float speed_rpm) {
-    struct dm_motor_data         *data = dev->data;
-    const struct dm_motor_config *cfg  = dev->config;
+int dm_motor_set_speed(const struct device *dev, float speed_rpm) {
+    struct dm_motor_data *data = dev->data;
 
     data->target_rpm = speed_rpm;
     dm_motor_set_mode(dev, VO);
@@ -165,7 +231,7 @@ int8_t dm_motor_set_speed(const struct device *dev, float speed_rpm) {
 }
 
 // user must set speed before setting angle
-int8_t dm_motor_set_angle(const struct device *dev, float angle) {
+int dm_motor_set_angle(const struct device *dev, float angle) {
     struct dm_motor_data *data = dev->data;
 
     data->target_angle = angle;
@@ -173,163 +239,114 @@ int8_t dm_motor_set_angle(const struct device *dev, float angle) {
     return 0;
 }
 
-float DM_motor::motor_get_current_rounds() {
-    if (reverse) {
-        return (-data.current_round);
-    } else {
-        return (data.current_round);
-    }
-}
-
-void dm_motor_error_process() {
-    uint8_t dis_cnt = 0;
-    uint8_t en_cnt  = 0;
-    if (data.err >= 8) {
-        while (dis_cnt < 10) {
-            this->motor_control(clear_error);
-            dis_cnt++;
-            osDelay(1);
-        }
-
-        while (en_cnt < 10) {
-            this->motor_control(enable_motor);
-            en_cnt++;
-            osDelay(1);
-        }
-    }
-}
-
-int get_motor_id(int id, struct motor_controller *ctrl_struct) {
-    for (int i = 0; i < CAN_COUNT; i++) {
-        for (int j = 0; j < 8; j++) {
-            if ((ctrl_struct[i].ids[j]) == id) {
-                return j;
-            }
+int get_motor_id(int id) {
+    for (int i = 0; i < MOTOR_COUNT; i++) {
+        const struct device          *dev = motor_devices[i];
+        const struct dm_motor_config *cfg = (const struct dm_motor_config *)(dev->config);
+        if (cfg->common.rx_id == id) {
+            return i;
         }
     }
     return -1;
 }
 
-void dm_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data) {
-    struct motor_controller *ctrl_struct = (struct motor_controller *)user_data;
+CAN_MSGQ_DEFINE(dm_can_msgq, 12);
 
-    int id = get_motor_id(frame->id, ctrl_struct);
-    if (id == -1) {
-        LOG_ERR("Unknown motor ID: %d", frame->id);
-        return;
-    }
+struct can_filter filters[CAN_COUNT];
 
-    struct dm_motor_data *data = (struct dm_motor_data *)(ctrl_struct->motor_devs[id]->data);
-    const struct dm_motor_config *cfg =
-        (const struct dm_motor_config *)(ctrl_struct->motor_devs[id]->config);
+void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
+    k_sem_init(&tx_queue_sem, 24, 24); // 初始化信号量
+    struct can_frame tx_frame;
 
-    data->err = frame->data[0] >> 4;
+    for (int i = 0; i < MOTOR_COUNT; i++) {
+        int                           can_id = 0;
+        const struct dm_motor_config *cfg =
+            (const struct dm_motor_config *)(motor_devices[i]->config);
 
-    data->RAWangle      = (frame->data[1] << 8) | frame->data[2];
-    data->RAWrpm        = (frame->data[3] << 4) | (frame->data[4] >> 4);
-    data->RAWtorque     = ((frame->data[4] & 0xF) << 8) | frame->data[5];
-    data->RAWtemp_mos   = frame->data[6];
-    data->RAWtemp_rotor = frame->data[7];
-}
-
-bool DM_motor::motor_reset() {
-    data.offset_ecd   = data.ecd;
-    data.total_ecd    = 0;
-    data.total_rounds = 0;
-    data.round_cnt    = 0;
-    return (true);
-}
-
-void dm_motor_calc(struct device *dev) {
-
-    /* initial value */
-    if (dm_motor->init_offset == false) {
-        if (dm_motor->type == DM_J4310_2EC) {
-            ptr->current_speed = //-1-1
-                uint_to_float(data->vel, -cfg->v_max, cfg->v_max, 12) /
-                cfg->v_max; // (-30.0,30.0)
+        for (int j = 0; j < CAN_COUNT; j++) {
+            if (can_devices[j] == cfg->common.phy) {
+                can_id = j;
+                break;
+            }
         }
-
-        ptr->current_round = // 0 - 2*P_MAX
-            (uint_to_float(data->pos, -cfg->p_max, cfg->p_max, 16) +
-             cfg->p_max) *
-            RAD2ROUND; // (-3.14,3.14)
-
-        ptr->offset_round = ptr->current_round;
-        return;
-    }
-    //误差改小,溢出cnt
-    ptr->last_round    = ptr->current_round; //电机编码反馈值
-    ptr->current_round =                     // (0 - 2*P_MAX)/(2*PI)
-        (uint_to_float(data->pos, -cfg->p_max, cfg->p_max, 16) +
-         cfg->p_max) *
-        RAD2ROUND; // (-3.14,3.14)
-    if (ptr->current_round - ptr->last_round > cfg->p_max * RAD2ROUND) {
-        ptr->round_cnt = ptr->round_cnt - 1;
-        ptr->delta_rounds =
-            ptr->current_round - ptr->last_round - (2.0f * cfg->p_max * RAD2ROUND);
-    } else if (ptr->current_round - ptr->last_round < -cfg->p_max * RAD2ROUND) {
-        ptr->round_cnt = ptr->round_cnt + 1;
-        ptr->delta_rounds =
-            ptr->current_round - ptr->last_round + (2.0f * cfg->p_max * RAD2ROUND);
-    } else {
-        ptr->delta_rounds = ptr->current_round - ptr->last_round;
-    }
-    ptr->total_rounds = (float)ptr->round_cnt * (2.0f * cfg->p_max * RAD2ROUND) +
-                        ptr->current_round - ptr->offset_round;
-
-    ptr->last_speed = ptr->current_speed;
-    if (dm_motor->type == DM_J4310_2EC) {
-        ptr->current_speed = //-1-1
-            uint_to_float(data->vel, -cfg->v_max, cfg->v_max, 12) /
-            cfg->v_max; // (-30.0,30.0)
+        filters[can_id].id &= cfg->common.rx_id & 0xFF;
+        filters[can_id].mask = ~(filters[can_id].mask ^ (cfg->common.rx_id & 0xFF)) & 0xFF;
     }
 
-    ptr->torque = uint_to_float(data->torque, -cfg->t_max, cfg->t_max,
-                                12); // (-10.0,10.0)
-}
-
-void DM_motor::motor_control(uint32_t cmd) {
-    switch (cmd) {
-    case enable_motor: memcpy(frame->data, array_enable_motor, 8); break;
-
-    case disable_motor: memcpy(frame->data, array_disable_motor, 8); break;
-
-    case save_zero_offset: memcpy(frame->data, array_save_zero_offset, 8); break;
-
-    case clear_pid:
-        velPid.pid_clear();
-        posPid.pid_clear();
-        break;
-
-    case disable_offset:
-        data.offset_ecd   = 0;
-        data.offset_round = 0;
-        break;
-
-    case clear_error: memcpy(frame->data, array_error_clear, 8); break;
+    for (int i = 0; i < CAN_COUNT; i++) {
+        filters[i].mask |= 0x700;
+        const struct device *can_dev = can_devices[i];
+        can_start(can_dev);
+        int err = can_add_rx_filter_msgq(can_dev, &dm_can_msgq, &filters[i]);
+        if (err < 0)
+            LOG_ERR("Error adding CAN filter (err %d)", err);
+        // If you recieved an error here, remember that 2# CAN of STM32 is in slave
+        // mode and does not have an independent filter. If that is the issue, you
+        // can ignore that.
     }
-}
 
-void DM_motor_service(void *argument) {
-    can_device_transmit DM_motor_can1_service(&hcan1);
-    can_device_transmit DM_motor_can2_service(&hcan2);
     for (;;) {
-        for (int i = 1; i <= 32; i++) {
-
-            if (DM_motor_can1_enable_list[i] == 1) {
-                DM_motor_can1_service.set_id(DM_motor_can1_tx_id[i]);
-                DM_motor_can1_service.set_buf_address(DM_motor_can1_total_data[i]);
-                DM_motor_can1_service.can_send_msg();
+        struct can_frame rx_frame;
+        while (k_msgq_num_used_get(&dm_can_msgq) > 0) {
+            k_msgq_get(&dm_can_msgq, &rx_frame, K_NO_WAIT);
+            int id = get_motor_id(rx_frame.id);
+            if (id == -1) {
+                LOG_ERR("Unknown motor ID: %d", rx_frame.id);
+                break;
             }
 
-            if (DM_motor_can2_enable_list[i] == 1) {
-                DM_motor_can2_service.set_id(DM_motor_can2_tx_id[i]);
-                DM_motor_can2_service.set_buf_address(DM_motor_can2_total_data[i]);
-                DM_motor_can2_service.can_send_msg();
+            struct dm_motor_data *data = (struct dm_motor_data *)(motor_devices[id]->data);
+            const struct dm_motor_config *cfg =
+                (const struct dm_motor_config *)(motor_devices[id]->config);
+
+            data->missed_times--;
+            data->err = rx_frame.data[0] >> 4;
+
+            float prev_angle   = data->common.angle;
+            data->common.angle = (uint_to_float((rx_frame.data[1] << 8) | rx_frame.data[2],
+                                                -cfg->p_max, cfg->p_max, 16)) *
+                                 RAD2DEG;
+
+            data->delta_deg_sum += data->common.angle - prev_angle;
+            if (data->delta_deg_sum > 360) {
+                data->common.round_cnt++;
+                data->delta_deg_sum -= 360.0f;
+            } else if (data->delta_deg_sum < -360) {
+                data->common.round_cnt--;
+                data->delta_deg_sum += 360.0f;
+            }
+
+            data->common.rpm = uint_to_float((rx_frame.data[3] << 4) | (rx_frame.data[4] >> 4),
+                                             -cfg->v_max, cfg->v_max, 12);
+
+            data->common.torque = uint_to_float(
+                ((rx_frame.data[4] & 0xF) << 8) | rx_frame.data[5], -cfg->t_max, cfg->t_max, 12);
+        }
+        int err;
+        for (int i = 0; i < MOTOR_COUNT; i++) {
+            struct dm_motor_data         *data = motor_devices[i]->data;
+            const struct dm_motor_config *cfg  = motor_devices[i]->config;
+            if (data->online) {
+                err = k_sem_take(&tx_queue_sem, K_NO_WAIT);
+                if (err == 0) {
+                    dm_motor_pack(motor_devices[i], &tx_frame);
+                    can_send(cfg->common.phy, &tx_frame, K_NO_WAIT, can_tx_callback,
+                             &tx_queue_sem);
+                }
+                if (++data->missed_times > 0) {
+                    LOG_ERR("Motor %d is not responding, trying to recover...", i);
+                    dm_motor_control(motor_devices[i], CLEAR_ERROR);
+                } else if (data->missed_times > 3) {
+                    LOG_ERR("Motor %d is not responding, setting it to offline...", i);
+                    data->online = false;
+                }
+            } else if (data->missed_times < 3) {
+                dm_motor_control(motor_devices[i], CLEAR_ERROR);
+                data->online = true;
+                LOG_ERR("Motor %d is responding again, resuming...", i);
             }
         }
-        osDelay(1);
+        k_sleep(K_MSEC(1));
     }
 }
 

@@ -1,87 +1,26 @@
 / {
-	rm_motor {
-		motor0: motor0{
-			compatible = "dji,motor";
-            is_m3508;
-			id = <1>;
-            rx_id = <0x201>;
-            tx_id = <0x200>;
-			gear_ratio = <1920>;
-			status = "okay";
-			can_channel = <&canbus1>;
-			controllers = <&angle_pid_1 &speed_pid_1>;
-			capabilities = "angle", "speed";
-		};
-
-		motor1: motor1{
-			compatible = "dji,motor";
-            is_m3508;
-			id = <2>;
-            rx_id = <0x202>;
-            tx_id = <0x200>;
-			gear_ratio = <1920>;
-			status = "okay";
-			can_channel = <&canbus1>;
-			controllers = <&angle_pid_2 &speed_pid_2>;
-			capabilities = "angle", "speed";
-		};
-
-		motor2: motor2{
-			compatible = "dji,motor";
-            is_m3508;
-			id = <3>;
-            rx_id = <0x203>;
-            tx_id = <0x200>;
-			gear_ratio = <1920>;
-			status = "okay";
-			can_channel = <&canbus1>;
-			controllers = <&angle_pid_3 &speed_pid_3>;
-			capabilities = "angle", "speed";
-		};
+	motor1: motor1{
+		compatible = "dm,motor";
+		id = <18>;
+		rx_id = <0x56>;
+		tx_id = <0x18>;
+		gear_ratio = <100>;
+		status = "okay";
+		can_channel = <&canbus1>;
+		controllers = <&mit_pid_0>;
+		capabilities = "mit";
+		p_max = <125>;
+		v_max = <450>;
+		t_max = <100>;
 	};
 
 	pid {
-		angle_pid_1: angle_pid_1 {
+		mit_pid_0: mit_pid_0 {
 			#controller-cells = <0>;
-			compatible = "pid,single";
+			compatible = "pid,mit";
 			k_p = <700>;
 			k_i = <3>;
 			k_d = <800>;
-		};
-		speed_pid_1: speed_pid_1 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <180>;
-			k_i = <20>;
-			k_d = <20>;
-		};
-		angle_pid_2: angle_pid_2 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <700>;
-			k_i = <3>;
-			k_d = <800>;
-		};
-		speed_pid_2: speed_pid_2 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <180>;
-			k_i = <20>;
-			k_d = <20>;
-		};
-		angle_pid_3: angle_pid_3 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <700>;
-			k_i = <3>;
-			k_d = <800>;
-		};
-		speed_pid_3: speed_pid_3 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = <180>;
-			k_i = <20>;
-			k_d = <20>;
 		};
 	};
 	sbus0: sbus0 {

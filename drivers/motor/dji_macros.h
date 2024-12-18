@@ -2,20 +2,6 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/motor.h>
 
-#define MOTOR_DT_DRIVER_DATA_INST_GET(inst) {0}
-
-#define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
-#define DT_DRIVER_GET_CANPHY_IDT(node_id)                                                        \
-    DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
-#define DT_DRIVER_GET_CANBUS_NAME(node_id) DT_NODE_FULL_NAME(DT_DRIVER_GET_CANBUS_IDT(node_id))
-
-#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_DRIVER_GET_CANPHY_IDT(node_id))
-
-#define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
-
-#define GET_CONTROLLER_STRUCT(node_id, prop, idx)                                                \
-    DEVICE_DT_GET(DT_PROP_BY_IDX(node_id, prop, idx))
-
 #define CAN_SEND_STACK_SIZE 4096
 #define CAN_SEND_PRIORITY   -1
 
@@ -29,7 +15,6 @@
 #define MOTOR_NODE   DT_NODELABEL(motor)
 #define CAN_BUS_NODE DT_NODELABEL(canbus)
 
-#define MOTOR_PATH   DT_PATH(rm_motor)
 #define CAN_BUS_PATH DT_PATH(canbus)
 
 #define IS_DJI_COMPAT(node_id)                                                                   \
@@ -57,19 +42,6 @@
  * @param node_id Devicetree node identifier
  */
 
-#define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                                      \
-    {                                                                                            \
-        .phy          = (const struct device *)DT_GET_CANPHY(node_id),                           \
-        .id           = DT_PROP(node_id, id),                                                    \
-        .tx_id        = DT_PROP(node_id, tx_id),                                                 \
-        .rx_id        = DT_PROP(node_id, rx_id),                                                 \
-        .controller   = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT,   \
-                                                  (, ))},                                        \
-        .capabilities = DT_PROP(node_id, capabilities),                                          \
-    }
-
-#define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
-
 #define DT_DRIVER_GET_CANPHY(inst) DT_GET_CANPHY(DT_DRIVER_GET_CANBUS_IDT(inst))
 
 #define DT_DRIVER_INST_GET_MOTOR_IDT(inst) DT_DRV_INST(inst)
@@ -83,7 +55,7 @@
     static struct dji_motor_data dji_motor_data_##inst = {                                       \
         .common      = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                      \
         .canbus_id   = DT_DRIVER_GET_CANBUS_ID(inst),                                            \
-        .ctrl_struct = (struct motor_controller *)&motor_cans[DT_DRIVER_GET_CANBUS_ID(inst)],    \
+        .ctrl_struct = &ctrl_structs[DT_DRIVER_GET_CANBUS_ID(inst)],                             \
     };
 
 #define DMOTOR_CONFIG_INST(inst)                                                                 \

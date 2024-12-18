@@ -21,7 +21,7 @@
         {
             "label": "Flash",
             "type": "shell",
-            "command": "west flash",
+            "command": "west flash --runner openocd",
             "group": {
                 "kind": "build",
                 "isDefault": false
@@ -32,7 +32,7 @@
         {
             "label": "Build & Flash",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c motor && west flash",
+            "command": "west build -p always -b robomaster_board_c motor && west flash --runner openocd",
             "group": {
                 "kind": "build",
                 "isDefault": false

@@ -25,6 +25,11 @@ config MOTOR_DJI
     help
       Add support for dji motors
 
+config MOTOR_DM
+	bool "MOTOR DM"
+	help
+	  Add support for dm motors
+
 config MOTOR_LOG_LEVEL
     int "Motor log level"
     default 4
