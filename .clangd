@@ -1,7 +1,3 @@
-Diagnostics:
-  Suppress:
-    [
-      -Wimplicit-function-declaration,
-      drv_unknown_argument,
-	    - missing-braces
-    ]
+CompileFlags:
+  Add: -Wno-unknown-warning-option
+  Remove: [-m*, -f*]

@@ -88,6 +88,8 @@ struct dji_motor_config {
 // 全局变量声明
 extern struct motor_controller ctrl_structs[];
 
+struct k_sem tx_queue_sem[CAN_COUNT];
+
 // 函数声明
 void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
 

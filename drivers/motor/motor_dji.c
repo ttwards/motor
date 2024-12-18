@@ -50,6 +50,16 @@ static int frames_id(int tx_id) {
     return -1; // Return a default value if no match is found
 }
 
+int get_can_id(const struct device *dev) {
+    const struct dm_motor_config *cfg = dev->config;
+    for (int i = 0; i < CAN_COUNT; i++) {
+        if (can_devices[i] == cfg->common.phy) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static int txframe_id(int frames_id) {
     if (frames_id == 0) {
         return 0x200;
@@ -83,11 +93,8 @@ static int16_t to16t(float value) {
 }
 
 static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-braces"
 struct motor_controller ctrl_structs[CAN_COUNT] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
-#pragma GCC diagnostic pop
 
 K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, ctrl_structs,
                 can_devices, motor_devices, CAN_SEND_PRIORITY, 0, 10);
@@ -393,14 +400,14 @@ static void motor_calc(const struct device *dev) {
     }
 }
 
-static struct k_sem tx_queue_sem;
-struct can_frame    txframe;
+struct can_frame txframe;
 
 static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3) {
-    k_sem_init(&tx_queue_sem, 24, 24); // 初始化信号量
     k_sem_init(&(ctrl_struct[0].thread_sem), 0, 2);
     struct device *can_dev = NULL;
     for (int i = 0; i < CAN_COUNT; i++) {
+        k_sem_init(&tx_queue_sem[i], 3, 3); // 初始化信号量
+
         can_dev = (struct device *)ctrl_struct[i].can_dev;
         can_start(can_dev);
         if (i != 0) {
@@ -438,10 +445,10 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
                         txframe.flags = 0;
                         memcpy(txframe.data, data, sizeof(data));
                         can_dev = (struct device *)ctrl_struct[i].can_dev;
-                        err     = k_sem_take(&tx_queue_sem, K_NO_WAIT);
+                        err     = k_sem_take(&tx_queue_sem[i], K_NO_WAIT);
                         if (err == 0)
                             err = can_send(can_dev, &txframe, K_NO_WAIT, can_tx_callback,
-                                           &tx_queue_sem);
+                                           &tx_queue_sem[i]);
                         if (err != 0 && err != -EAGAIN && err != -EBUSY)
                             LOG_ERR("Error sending CAN frame (err %d)", err);
                     }

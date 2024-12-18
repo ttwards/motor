@@ -13,6 +13,7 @@
 #include "zephyr/drivers/can.h"
 #include "zephyr/drivers/motor.h"
 #include "zephyr/drivers/pid.h"
+#include "zephyr/kernel.h"
 
 #define DT_DRV_COMPAT dm_motor
 
@@ -58,16 +59,26 @@ static inline int float_to_uint(float x, float x_min, float x_max, int bits) {
     return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
 }
 
+int get_can_id(const struct device *dev) {
+    const struct dm_motor_config *cfg = dev->config;
+    for (int i = 0; i < CAN_COUNT; i++) {
+        if (can_devices[i] == cfg->common.phy) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data) {
     struct k_sem *queue_sem = user_data;
     if (!error)
         k_sem_give(queue_sem);
 }
 
-void dm_init(const struct device *dev) {
-    struct dm_motor_data         *data = dev->data;
-    const struct dm_motor_config *cfg  = dev->config;
+int dm_init(const struct device *dev) {
+    const struct dm_motor_config *cfg = dev->config;
     can_start(cfg->common.phy);
+    return 0;
 }
 
 void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
@@ -78,24 +89,28 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
     frame.id    = cfg->common.tx_id;
     frame.flags = 0;
 
-    int err = 0;
+    int err    = 0;
+    int can_id = get_can_id(dev);
 
     switch (cmd) {
     case ENABLE_MOTOR:
         data->online = true;
         memcpy(frame.data, enable_frame, 8);
-        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        err =
+            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
         break;
     case DISABLE_MOTOR:
         data->online = false;
         memcpy(frame.data, disable_frame, 8);
-        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        err =
+            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
         break;
     case SET_ZERO_OFFSET: memcpy(frame.data, set_zero_frame, 8); break;
     case CLEAR_PID: memset(&data->params, 0, sizeof(data->params)); break;
     case CLEAR_ERROR:
         memcpy(frame.data, clear_error_frame, 8);
-        err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem);
+        err =
+            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
         break;
     }
     if (err != 0) {
@@ -250,12 +265,12 @@ int get_motor_id(int id) {
     return -1;
 }
 
-CAN_MSGQ_DEFINE(dm_can_msgq, 12);
+CAN_MSGQ_DEFINE(dm_can_rx_msgq, 12);
+K_MSGQ_DEFINE(dm_can_tx_msgq, sizeof(struct tx_frame), MOTOR_COUNT, 4);
 
 struct can_filter filters[CAN_COUNT];
 
 void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
-    k_sem_init(&tx_queue_sem, 24, 24); // 初始化信号量
     struct can_frame tx_frame;
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
@@ -274,10 +289,12 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
     }
 
     for (int i = 0; i < CAN_COUNT; i++) {
+        k_sem_init(&tx_queue_sem[i], 3, 3); // 初始化信号量
+
         filters[i].mask |= 0x700;
         const struct device *can_dev = can_devices[i];
         can_start(can_dev);
-        int err = can_add_rx_filter_msgq(can_dev, &dm_can_msgq, &filters[i]);
+        int err = can_add_rx_filter_msgq(can_dev, &dm_can_rx_msgq, &filters[i]);
         if (err < 0)
             LOG_ERR("Error adding CAN filter (err %d)", err);
         // If you recieved an error here, remember that 2# CAN of STM32 is in slave
@@ -287,8 +304,7 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
 
     for (;;) {
         struct can_frame rx_frame;
-        while (k_msgq_num_used_get(&dm_can_msgq) > 0) {
-            k_msgq_get(&dm_can_msgq, &rx_frame, K_NO_WAIT);
+        while (k_msgq_get(&dm_can_rx_msgq, &rx_frame, K_MSEC(1))) {
             int id = get_motor_id(rx_frame.id);
             if (id == -1) {
                 LOG_ERR("Unknown motor ID: %d", rx_frame.id);
@@ -322,16 +338,27 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
             data->common.torque = uint_to_float(
                 ((rx_frame.data[4] & 0xF) << 8) | rx_frame.data[5], -cfg->t_max, cfg->t_max, 12);
         }
-        int err;
         for (int i = 0; i < MOTOR_COUNT; i++) {
             struct dm_motor_data         *data = motor_devices[i]->data;
             const struct dm_motor_config *cfg  = motor_devices[i]->config;
             if (data->online) {
-                err = k_sem_take(&tx_queue_sem, K_NO_WAIT);
+                int can_id = get_can_id(motor_devices[i]);
+                int err    = k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT);
                 if (err == 0) {
                     dm_motor_pack(motor_devices[i], &tx_frame);
                     can_send(cfg->common.phy, &tx_frame, K_NO_WAIT, can_tx_callback,
-                             &tx_queue_sem);
+                             &tx_queue_sem[can_id]);
+                } else if (err == -EBUSY) {
+                    struct tx_frame queued_frame = {
+                        .can_dev = cfg->common.phy,
+                        .sem     = &tx_queue_sem[can_id],
+                        .frame   = tx_frame,
+                    };
+                    LOG_ERR("CAN TX queue is full");
+                    err = k_msgq_put(&dm_can_tx_msgq, &queued_frame, K_NO_WAIT);
+                    if (err) {
+                        LOG_ERR("Failed to put CAN frame into TX queue: %d", err);
+                    }
                 }
                 if (++data->missed_times > 0) {
                     LOG_ERR("Motor %d is not responding, trying to recover...", i);
@@ -346,7 +373,13 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
                 LOG_ERR("Motor %d is responding again, resuming...", i);
             }
         }
-        k_sleep(K_MSEC(1));
+        struct tx_frame frame;
+        while (k_msgq_put(&dm_can_tx_msgq, &frame, K_NO_WAIT) != -ENOMSG) {
+            int err = k_sem_take(frame.sem, K_USEC(200));
+            if (err == 0) {
+                can_send(frame.can_dev, &frame.frame, K_NO_WAIT, can_tx_callback, frame.sem);
+            }
+        }
     }
 }
 

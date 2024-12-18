@@ -79,7 +79,11 @@ struct dm_motor_config {
     float t_max;
 };
 
-struct k_sem tx_queue_sem;
+struct tx_frame {
+    const struct device *can_dev;
+    struct k_sem        *sem;
+    struct can_frame     frame;
+};
 
 // 函数声明
 void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
@@ -107,12 +111,13 @@ static const struct motor_driver_api motor_api_funcs = {
 extern const struct device *can_devices[];
 extern const struct device *motor_devices[];
 
+struct k_sem tx_queue_sem[CAN_COUNT];
+
 #define MOTOR_COUNT            DT_NUM_INST_STATUS_OKAY(dm_motor)
 #define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst))(, )
 const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
 
 #define CAN_BUS_PATH DT_PATH(canbus)
-#define CAN_COUNT    DT_NUM_INST_STATUS_OKAY(vnd_canbus)
 
 #define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
 const struct device *can_devices[] = {

@@ -285,6 +285,8 @@ static inline void z_impl_motor_set_mode(const struct device *dev, enum motor_mo
     return;
 }
 
+#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)
+
 #define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
 #define DT_DRIVER_GET_CANPHY_IDT(node_id)                                                        \
     DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
