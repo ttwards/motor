@@ -59,7 +59,7 @@ static inline int float_to_uint(float x, float x_min, float x_max, int bits) {
     return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
 }
 
-int get_can_id(const struct device *dev) {
+static int get_can_id(const struct device *dev) {
     const struct dm_motor_config *cfg = dev->config;
     for (int i = 0; i < CAN_COUNT; i++) {
         if (can_devices[i] == cfg->common.phy) {
@@ -76,9 +76,45 @@ static void can_tx_callback(const struct device *can_dev, int error, void *user_
 }
 
 int dm_init(const struct device *dev) {
-    const struct dm_motor_config *cfg = dev->config;
-    can_start(cfg->common.phy);
+    const struct dm_motor_config *cfg    = dev->config;
+    int                           can_id = get_can_id(dev);
+    k_sem_init(&tx_queue_sem[can_id], 3, 3); // 初始化信号量
+    if (!device_is_ready(cfg->common.phy))
+        return -1;
+    k_thread_start(dm_motor_ctrl_thread);
     return 0;
+}
+
+int dm_send_queued(struct tx_frame *frame, struct k_msgq *msgq) {
+    int err = k_sem_take(frame->sem, K_NO_WAIT);
+    if (err == 0) {
+        err = can_send(frame->can_dev, &frame->frame, K_NO_WAIT, can_tx_callback, frame->sem);
+        if (err) {
+            LOG_ERR("TX queue full, will be put into msgq: %d", err);
+        }
+    } else if (err < 0) {
+        LOG_ERR("CAN hardware TX queue is full. (err %d)", err);
+        err = k_msgq_put(msgq, frame, K_NO_WAIT);
+        if (err) {
+            LOG_ERR("Failed to put CAN frame into TX queue: %d", err);
+        }
+    }
+    return err;
+}
+
+int dm_queue_proceed(struct k_msgq *msgq) {
+    struct tx_frame frame;
+    int             err = 0;
+    while (!k_msgq_get(msgq, &frame, K_NO_WAIT)) {
+        if (err == 0) {
+            err = can_send(frame.can_dev, &(frame.frame), K_MSEC(1), can_tx_callback, frame.sem);
+            if (err) {
+                LOG_ERR("Failed to send CAN frame: %d", err);
+            }
+            k_msgq_purge(msgq);
+        }
+    }
+    return err;
 }
 
 void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
@@ -88,29 +124,42 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
     struct can_frame frame;
     frame.id    = cfg->common.tx_id;
     frame.flags = 0;
+    frame.dlc   = 8;
 
     int err    = 0;
     int can_id = get_can_id(dev);
 
+    struct tx_frame tx_frame = {
+        .can_dev = cfg->common.phy,
+        .sem     = &tx_queue_sem[can_id],
+    };
     switch (cmd) {
     case ENABLE_MOTOR:
         data->online = true;
         memcpy(frame.data, enable_frame, 8);
-        err =
-            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
+        tx_frame.frame = frame;
+
+        err = dm_send_queued(&tx_frame, &dm_can_tx_msgq);
         break;
     case DISABLE_MOTOR:
         data->online = false;
         memcpy(frame.data, disable_frame, 8);
-        err =
-            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
+        tx_frame.frame = frame;
+
+        err = dm_send_queued(&tx_frame, &dm_can_tx_msgq);
         break;
-    case SET_ZERO_OFFSET: memcpy(frame.data, set_zero_frame, 8); break;
+    case SET_ZERO_OFFSET:
+        memcpy(frame.data, set_zero_frame, 8);
+        tx_frame.frame = frame;
+
+        err = dm_send_queued(&tx_frame, &dm_can_tx_msgq);
+        break;
     case CLEAR_PID: memset(&data->params, 0, sizeof(data->params)); break;
     case CLEAR_ERROR:
         memcpy(frame.data, clear_error_frame, 8);
-        err =
-            can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback, &tx_queue_sem[can_id]);
+        tx_frame.frame = frame;
+
+        err = dm_send_queued(&tx_frame, &dm_can_tx_msgq);
         break;
     }
     if (err != 0) {
@@ -118,18 +167,22 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd) {
     }
 }
 
-void dm_motor_pack(const struct device *dev, struct can_frame *frame) {
+static void dm_motor_pack(const struct device *dev, struct can_frame *frame) {
     uint16_t                      pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp;
     uint8_t                      *pbuf, *vbuf;
     struct dm_motor_data         *data = dev->data;
     const struct dm_motor_config *cfg  = dev->config;
+
+    frame->id    = cfg->common.tx_id + data->tx_offset;
+    frame->dlc   = 8;
+    frame->flags = 0;
     switch (data->common.mode) {
     case MIT:
-        pos_tmp = uint_to_float(data->target_angle, -cfg->p_max, cfg->p_max, 16);
-        vel_tmp = uint_to_float(data->target_rpm, -cfg->v_max, cfg->v_max, 12);
-        tor_tmp = uint_to_float(data->target_torque, -cfg->t_max, cfg->t_max, 12);
-        kp_tmp  = uint_to_float(data->params.k_p, 0, 500, 12);
-        kd_tmp  = uint_to_float(data->params.k_d, 0, 5, 12);
+        pos_tmp = float_to_uint(data->target_angle, -cfg->p_max, cfg->p_max, 16);
+        vel_tmp = float_to_uint(data->target_rpm, -cfg->v_max, cfg->v_max, 12);
+        tor_tmp = float_to_uint(data->target_torque, -cfg->t_max, cfg->t_max, 12);
+        kp_tmp  = float_to_uint(data->params.k_p, 0, 500, 12);
+        kd_tmp  = float_to_uint(data->params.k_d, 0, 5, 12);
 
         frame->data[0] = (pos_tmp >> 8);
         frame->data[1] = pos_tmp;
@@ -232,7 +285,6 @@ int dm_motor_set_torque(const struct device *dev, float torque) {
     data->target_torque = torque_scaled;
     data->params.k_p    = 0;
     data->params.k_d    = 0;
-    dm_motor_set_mode(dev, MIT);
     return 0;
 }
 
@@ -240,7 +292,6 @@ int dm_motor_set_speed(const struct device *dev, float speed_rpm) {
     struct dm_motor_data *data = dev->data;
 
     data->target_rpm = speed_rpm;
-    dm_motor_set_mode(dev, VO);
 
     return 0;
 }
@@ -265,12 +316,10 @@ int get_motor_id(int id) {
     return -1;
 }
 
-CAN_MSGQ_DEFINE(dm_can_rx_msgq, 12);
-K_MSGQ_DEFINE(dm_can_tx_msgq, sizeof(struct tx_frame), MOTOR_COUNT, 4);
+static struct can_filter filters[CAN_COUNT];
 
-struct can_filter filters[CAN_COUNT];
-
-void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
+static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
+    LOG_ERR("DM motor control thread started");
     struct can_frame tx_frame;
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
@@ -286,14 +335,17 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
         }
         filters[can_id].id &= cfg->common.rx_id & 0xFF;
         filters[can_id].mask = ~(filters[can_id].mask ^ (cfg->common.rx_id & 0xFF)) & 0xFF;
+
+        int err = can_start(cfg->common.phy);
+        if (err) {
+            LOG_ERR("Failed to start CAN device: %d", err);
+        }
     }
 
     for (int i = 0; i < CAN_COUNT; i++) {
-        k_sem_init(&tx_queue_sem[i], 3, 3); // 初始化信号量
-
         filters[i].mask |= 0x700;
         const struct device *can_dev = can_devices[i];
-        can_start(can_dev);
+
         int err = can_add_rx_filter_msgq(can_dev, &dm_can_rx_msgq, &filters[i]);
         if (err < 0)
             LOG_ERR("Error adding CAN filter (err %d)", err);
@@ -302,9 +354,15 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
         // can ignore that.
     }
 
+    k_sleep(K_MSEC(60));
+
+    for (int i = 0; i < MOTOR_COUNT; i++) {
+        dm_motor_control(motor_devices[i], ENABLE_MOTOR);
+    }
+
     for (;;) {
         struct can_frame rx_frame;
-        while (k_msgq_get(&dm_can_rx_msgq, &rx_frame, K_MSEC(1))) {
+        while (!k_msgq_get(&dm_can_rx_msgq, &rx_frame, K_MSEC(1))) {
             int id = get_motor_id(rx_frame.id);
             if (id == -1) {
                 LOG_ERR("Unknown motor ID: %d", rx_frame.id);
@@ -346,19 +404,12 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
                 int err    = k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT);
                 if (err == 0) {
                     dm_motor_pack(motor_devices[i], &tx_frame);
-                    can_send(cfg->common.phy, &tx_frame, K_NO_WAIT, can_tx_callback,
-                             &tx_queue_sem[can_id]);
-                } else if (err == -EBUSY) {
                     struct tx_frame queued_frame = {
                         .can_dev = cfg->common.phy,
                         .sem     = &tx_queue_sem[can_id],
                         .frame   = tx_frame,
                     };
-                    LOG_ERR("CAN TX queue is full");
-                    err = k_msgq_put(&dm_can_tx_msgq, &queued_frame, K_NO_WAIT);
-                    if (err) {
-                        LOG_ERR("Failed to put CAN frame into TX queue: %d", err);
-                    }
+                    dm_send_queued(&queued_frame, &dm_can_tx_msgq);
                 }
                 if (++data->missed_times > 0) {
                     LOG_ERR("Motor %d is not responding, trying to recover...", i);
@@ -373,13 +424,8 @@ void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
                 LOG_ERR("Motor %d is responding again, resuming...", i);
             }
         }
-        struct tx_frame frame;
-        while (k_msgq_put(&dm_can_tx_msgq, &frame, K_NO_WAIT) != -ENOMSG) {
-            int err = k_sem_take(frame.sem, K_USEC(200));
-            if (err == 0) {
-                can_send(frame.can_dev, &frame.frame, K_NO_WAIT, can_tx_callback, frame.sem);
-            }
-        }
+        dm_queue_proceed(&dm_can_tx_msgq);
+        k_sleep(K_USEC(800));
     }
 }
 

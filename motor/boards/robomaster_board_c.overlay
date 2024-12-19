@@ -1,9 +1,9 @@
 / {
 	motor1: motor1{
 		compatible = "dm,motor";
-		id = <18>;
-		rx_id = <0x56>;
-		tx_id = <0x18>;
+		id = <24>;
+		rx_id = <24>;
+		tx_id = <86>;
 		gear_ratio = <100>;
 		status = "okay";
 		can_channel = <&canbus1>;

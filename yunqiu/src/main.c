@@ -124,8 +124,8 @@ int sbus_get_bool(const struct device *sbus, int channel) {
 
 int main(void) {
 
-    motor_set_zero(motor1);
-    motor_set_zero(motor2);
+    motor_control(motor1, SET_ZERO_OFFSET);
+    motor_control(motor2, SET_ZERO_OFFSET);
 
     motor_set_angle(motor1, 0);
     motor_set_angle(motor2, 0);

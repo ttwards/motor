@@ -51,7 +51,7 @@ static int frames_id(int tx_id) {
 }
 
 int get_can_id(const struct device *dev) {
-    const struct dm_motor_config *cfg = dev->config;
+    const struct dji_motor_config *cfg = dev->config;
     for (int i = 0; i < CAN_COUNT; i++) {
         if (can_devices[i] == cfg->common.phy) {
             return i;

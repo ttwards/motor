@@ -24,7 +24,8 @@
             "liveWatch": {
                 "enabled": true,
                 "samplesPerSecond": 1
-            }
+            },
+			"showDevDebugOutput": "raw"
         },
         {
             "name": "Attach",

@@ -14,12 +14,6 @@ module = MOTOR
 module-str = MOTOR
 source "subsys/logging/Kconfig.template.log_config"
 
-config PACKAGE_SEND_TIME_GAP
-    int "Package send time gap"
-    default 50
-    help
-      The time gap between two motor controlling packages in ms
-
 config MOTOR_DJI
     bool "MOTOR DJI"
     help

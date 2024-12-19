@@ -37,7 +37,19 @@
 extern "C" {
 #endif
 
+/**
+ * @brief 电机工作模式枚举
+ * 
+ * MIT: MIT模式
+ * PV: 位置-速度控制
+ * VO: 速度控制  
+ * MULTILOOP: 多环串联控制
+ */
 enum motor_mode { MIT, PV, VO, MULTILOOP };
+
+/**
+ * @brief 电机控制命令枚举
+ */
 enum motor_cmd { ENABLE_MOTOR, DISABLE_MOTOR, SET_ZERO_OFFSET, CLEAR_PID, CLEAR_ERROR };
 
 struct motor_driver_config {
@@ -56,72 +68,90 @@ struct motor_driver_config {
 };
 
 struct motor_driver_data {
-    float           angle;
-    float           rpm;
-    float           torque;
-    float           temperature;
-    int             round_cnt;
+    float angle;
+    float rpm;
+    float torque;
+    float temperature;
+    int   round_cnt;
+
     enum motor_mode mode;
 };
-
 /**
- * @typedef motor_get_status()
- * @brief Callback API returning motor status
+ * @typedef motor_api_stat_speed_t
+ * @brief 获取电机当前速度的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @return float 当前电机速度(rpm)
  */
 typedef float (*motor_api_stat_speed_t)(const struct device *dev);
 
 /**
- * @typedef motor_get_status()
- * @brief Callback API returning motor status
+ * @typedef motor_api_stat_torque_t  
+ * @brief 获取电机当前扭矩的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @return float 当前电机扭矩(N·m)
  */
 typedef float (*motor_api_stat_torque_t)(const struct device *dev);
 
 /**
- * @typedef motor_get_status()
- * @brief Callback API returning motor status
+ * @typedef motor_api_stat_angle_t
+ * @brief 获取电机当前角度的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @return float 当前电机角度(度)
  */
 typedef float (*motor_api_stat_angle_t)(const struct device *dev);
 
 /**
- * @typedef motor_set_speed()
- * @brief Callback API returning motor status
+ * @typedef motor_api_speed_t
+ * @brief 设置电机目标速度的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @param speed_rpm 目标速度(rpm)
+ * @return int 0表示成功,负值表示错误码
  */
 typedef int (*motor_api_speed_t)(const struct device *dev, float speed_rpm);
 
 /**
- * @typedef motor_set_torque()
- * @brief Callback API returning motor status
+ * @typedef motor_api_torque_t
+ * @brief 设置电机目标扭矩的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @param torque 目标扭矩(N·m)
+ * @return int 0表示成功,负值表示错误码
  */
 typedef int (*motor_api_torque_t)(const struct device *dev, float torque);
 
 /**
- * @typedef motor_set_angle()
- * @brief Callback API returning motor status
+ * @typedef motor_api_angle_t
+ * @brief 设置电机目标角度的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @param angle 目标角度(度)
+ * @return int 0表示成功,负值表示错误码
  */
 typedef int (*motor_api_angle_t)(const struct device *dev, float angle);
 
 /**
- * @typedef motor_control()
- * @brief Callback API returning motor status
+ * @typedef motor_api_ctrl_t
+ * @brief 电机控制命令的回调函数
  *
- * @see get_status() for argument descriptions.
+ * @param dev 指向电机设备的指针
+ * @param cmd 控制命令(启动、停止等)
+ * @return void
  */
 typedef void (*motor_api_ctrl_t)(const struct device *dev, enum motor_cmd cmd);
 
+/**
+ * @typedef motor_api_mode_t
+ * @brief 设置电机工作模式的回调函数
+ *
+ * @param dev 指向电机设备的指针
+ * @param mode 工作模式(速度模式、位置模式等)
+ * @return int 0表示成功,负值表示错误码
+ */
 typedef int (*motor_api_mode_t)(const struct device *dev, enum motor_mode mode);
-
 /**
  * @brief Servo Motor driver API
  */
@@ -147,18 +177,15 @@ enum MotorError {
 };
 
 /**
- * @brief Get Torque
+ * @brief 获取电机当前扭矩
  *
- * This routine retrieves the current torque of the motor.
- *
- * @param dev Motor Device
- * @return the current torque
+ * @param dev 电机设备指针
+ * @return float 当前扭矩值(N·m)，错误时返回负值
  */
 __syscall float motor_get_torque(const struct device *dev);
 
 static inline float z_impl_motor_get_torque(const struct device *dev) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_get_torque == NULL) {
         return -ENOSYS;
     }
@@ -166,29 +193,31 @@ static inline float z_impl_motor_get_torque(const struct device *dev) {
 }
 
 /**
- * @brief Get Speed
+ * @brief 获取电机当前转速
  *
- * This optional routine retrieves the current speed of the motor.
- *
- * @param dev Motor Device
- * @return the current speed in RPM
+ * @param dev 电机设备指针
+ * @return float 当前转速(RPM)，错误时返回负值
  */
 __syscall float motor_get_speed(const struct device *dev);
 
 static inline float z_impl_motor_get_speed(const struct device *dev) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_get_speed == NULL) {
         return -ENOSYS;
     }
     return api->motor_get_speed(dev);
 }
 
+/**
+ * @brief 获取电机当前角度
+ *
+ * @param dev 电机设备指针
+ * @return float 当前角度(度)，错误时返回负值
+ */
 __syscall float motor_get_angle(const struct device *dev);
 
 static inline float z_impl_motor_get_angle(const struct device *dev) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_get_angle == NULL) {
         return -ENOSYS;
     }
@@ -196,19 +225,16 @@ static inline float z_impl_motor_get_angle(const struct device *dev) {
 }
 
 /**
- * @brief Get Status
+ * @brief 设置电机目标速度
  *
- * This optional routine starts blinking a LED forever with the given time
- * period.
- *
- * @param dev Motor Device
- * @return 0 on success, negative on error
+ * @param dev 电机设备指针
+ * @param speed_rpm 目标转速(RPM)
+ * @return int 0:成功，负值:错误码
  */
 __syscall int motor_set_speed(const struct device *dev, float speed_rpm);
 
 static inline int z_impl_motor_set_speed(const struct device *dev, float speed_rpm) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_set_speed == NULL) {
         return -ENOSYS;
     }
@@ -216,19 +242,16 @@ static inline int z_impl_motor_set_speed(const struct device *dev, float speed_r
 }
 
 /**
- * @brief Get Status
+ * @brief 设置电机目标角度
  *
- * This optional routine starts blinking a LED forever with the given time
- * period.
- *
- * @param dev Motor Device
- * @return 0 on success, negative on error
+ * @param dev 电机设备指针
+ * @param angle 目标角度(度)
+ * @return int 0:成功，负值:错误码
  */
 __syscall int motor_set_angle(const struct device *dev, float angle);
 
 static inline int z_impl_motor_set_angle(const struct device *dev, float angle) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_set_angle == NULL) {
         return -ENOSYS;
     }
@@ -236,19 +259,16 @@ static inline int z_impl_motor_set_angle(const struct device *dev, float angle) 
 }
 
 /**
- * @brief Get Status
+ * @brief 设置电机目标扭矩
  *
- * This optional routine starts blinking a LED forever with the given time
- * period.
- *
- * @param dev Motor Device
- * @return 0 on success, negative on error
+ * @param dev 电机设备指针
+ * @param torque 目标扭矩(N·m)
+ * @return int 0:成功，负值:错误码
  */
 __syscall int motor_set_torque(const struct device *dev, float torque);
 
 static inline int z_impl_motor_set_torque(const struct device *dev, float torque) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_set_torque == NULL) {
         return -ENOSYS;
     }
@@ -256,17 +276,16 @@ static inline int z_impl_motor_set_torque(const struct device *dev, float torque
 }
 
 /**
- * @brief Set Zero
- * 
- * This optional routine sets the current angle of the motor to zero.
+ * @brief 执行电机控制命令
  *
- * @param dev Motor Device
-    * @return angle before being set to zero
+ * @param dev 电机设备指针
+ * @param cmd 控制命令
+ * @return int 0:成功，负值:错误码
  */
-__syscall void     motor_control(const struct device *dev, enum motor_cmd cmd);
+__syscall void motor_control(const struct device *dev, enum motor_cmd cmd);
+
 static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd cmd) {
     const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-
     if (api->motor_control == NULL) {
         return;
     }
@@ -274,15 +293,21 @@ static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd
     return;
 }
 
-__syscall void     motor_set_mode(const struct device *dev, enum motor_mode mode);
-static inline void z_impl_motor_set_mode(const struct device *dev, enum motor_mode mode) {
-    const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
+/**
+ * @brief 设置电机工作模式
+ *
+ * @param dev 电机设备指针
+ * @param mode 工作模式
+ * @return int 0:成功，负值:错误码
+ */
+__syscall int motor_set_mode(const struct device *dev, enum motor_mode mode);
 
+static inline int z_impl_motor_set_mode(const struct device *dev, enum motor_mode mode) {
+    const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
     if (api->motor_set_mode == NULL) {
-        return;
+        return -ENOSYS;
     }
-    api->motor_set_mode(dev, mode);
-    return;
+    return api->motor_set_mode(dev, mode);
 }
 
 #define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)

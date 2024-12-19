@@ -8,6 +8,7 @@
 #define MOTOR_DM_H
 
 #include "zephyr/kernel.h"
+#include <stdint.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <zephyr/device.h>
@@ -16,18 +17,7 @@
 #include <zephyr/drivers/pid.h>
 #include <zephyr/drivers/can.h>
 
-/*  canbus_id_t specifies the ID of the CAN bus the motor is on
-        which is defined in motor_devices[] */
-typedef uint8_t canbus_id_t;
-
-/*  allmotor_id_t specifies the ID of the motor
-        which is in the flags
-        use flags |= 1 << all_motor_id*/
-typedef uint16_t allmotor_id_t;
-
-/*  motor_id_t specifies the ID of the motor in motor_controller struct
-        find the rpm in motor_cans->target_rpm[canbus_id] */
-typedef uint16_t motor_id_t;
+#define DT_DRV_COMPAT dm_motor
 
 #define INT12_MAX 0x7FF
 #define INT12_MIN -0x800
@@ -37,12 +27,12 @@ typedef uint16_t motor_id_t;
 #define RAD2ROUND 1.0f / (2 * PI)
 #define RAD2DEG   180.0f / PI
 
-const int enable_frame[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC};
-const int disable_frame[]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD};
-const int set_zero_frame[]    = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE};
-const int clear_error_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB};
+static const uint8_t enable_frame[]      = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC};
+static const uint8_t disable_frame[]     = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD};
+static const uint8_t set_zero_frame[]    = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE};
+static const uint8_t clear_error_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFB};
 
-#define CAN_SEND_STACK_SIZE 4096
+#define CAN_SEND_STACK_SIZE 2048
 #define CAN_SEND_PRIORITY   -1
 
 #define SIZE_OF_ARRAY(x) (sizeof(x) / sizeof(x[0]))
@@ -108,25 +98,24 @@ static const struct motor_driver_api motor_api_funcs = {
     .motor_set_mode   = dm_motor_set_mode,
 };
 
-extern const struct device *can_devices[];
-extern const struct device *motor_devices[];
-
-struct k_sem tx_queue_sem[CAN_COUNT];
+static struct k_sem tx_queue_sem[CAN_COUNT];
 
 #define MOTOR_COUNT            DT_NUM_INST_STATUS_OKAY(dm_motor)
-#define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst))(, )
-const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
+#define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst)),
+static const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
 
 #define CAN_BUS_PATH DT_PATH(canbus)
 
 #define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
-const struct device *can_devices[] = {
+static const struct device *can_devices[] = {
     DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
 
 static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3);
 
 K_THREAD_DEFINE(dm_motor_ctrl_thread, CAN_SEND_STACK_SIZE, dm_motor_ctrl_entry, NULL, NULL, NULL,
                 CAN_SEND_PRIORITY, 0, 10);
+CAN_MSGQ_DEFINE(dm_can_rx_msgq, 12);
+K_MSGQ_DEFINE(dm_can_tx_msgq, sizeof(struct tx_frame), MOTOR_COUNT, 4);
 
 #define DMMOTOR_DATA_INST(inst)                                                                  \
     static struct dm_motor_data dm_motor_data_##inst = {                                         \
