@@ -93,7 +93,7 @@ int dm_send_queued(struct tx_frame *frame, struct k_msgq *msgq) {
             LOG_ERR("TX queue full, will be put into msgq: %d", err);
         }
     } else if (err < 0) {
-        LOG_ERR("CAN hardware TX queue is full. (err %d)", err);
+        // LOG_ERR("CAN hardware TX queue is full. (err %d)", err);
         err = k_msgq_put(msgq, frame, K_NO_WAIT);
         if (err) {
             LOG_ERR("Failed to put CAN frame into TX queue: %d", err);
@@ -104,14 +104,24 @@ int dm_send_queued(struct tx_frame *frame, struct k_msgq *msgq) {
 
 int dm_queue_proceed(struct k_msgq *msgq) {
     struct tx_frame frame;
-    int             err = 0;
+    int             err     = 0;
+    bool            give_up = false;
     while (!k_msgq_get(msgq, &frame, K_NO_WAIT)) {
+        err = k_sem_take(frame.sem, K_NO_WAIT);
         if (err == 0) {
             err = can_send(frame.can_dev, &(frame.frame), K_MSEC(1), can_tx_callback, frame.sem);
             if (err) {
                 LOG_ERR("Failed to send CAN frame: %d", err);
             }
             k_msgq_purge(msgq);
+        } else {
+            if (give_up) {
+                k_msgq_purge(msgq);
+                break;
+            }
+            k_sleep(K_USEC(300));
+            give_up = true;
+            continue;
         }
     }
     return err;
@@ -319,7 +329,7 @@ int get_motor_id(int id) {
 static struct can_filter filters[CAN_COUNT];
 
 static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
-    LOG_ERR("DM motor control thread started");
+    LOG_DBG("DM motor control thread started");
     struct can_frame tx_frame;
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
@@ -354,7 +364,7 @@ static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
         // can ignore that.
     }
 
-    k_sleep(K_MSEC(60));
+    k_sleep(K_MSEC(1000));
 
     for (int i = 0; i < MOTOR_COUNT; i++) {
         dm_motor_control(motor_devices[i], ENABLE_MOTOR);
@@ -362,7 +372,7 @@ static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
 
     for (;;) {
         struct can_frame rx_frame;
-        while (!k_msgq_get(&dm_can_rx_msgq, &rx_frame, K_MSEC(1))) {
+        while (!k_msgq_get(&dm_can_rx_msgq, &rx_frame, K_NO_WAIT)) {
             int id = get_motor_id(rx_frame.id);
             if (id == -1) {
                 LOG_ERR("Unknown motor ID: %d", rx_frame.id);
@@ -373,7 +383,9 @@ static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
             const struct dm_motor_config *cfg =
                 (const struct dm_motor_config *)(motor_devices[id]->config);
 
-            data->missed_times--;
+            if (data->missed_times > 0) {
+                data->missed_times--;
+            }
             data->err = rx_frame.data[0] >> 4;
 
             float prev_angle   = data->common.angle;
@@ -411,21 +423,20 @@ static void dm_motor_ctrl_entry(void *arg1, void *arg2, void *arg3) {
                     };
                     dm_send_queued(&queued_frame, &dm_can_tx_msgq);
                 }
-                if (++data->missed_times > 0) {
-                    LOG_ERR("Motor %d is not responding, trying to recover...", i);
+                if (++(data->missed_times) > 3) {
                     dm_motor_control(motor_devices[i], CLEAR_ERROR);
-                } else if (data->missed_times > 3) {
+                } else if (data->missed_times > 5) {
                     LOG_ERR("Motor %d is not responding, setting it to offline...", i);
                     data->online = false;
                 }
-            } else if (data->missed_times < 3) {
+            } else if (data->missed_times <= 5) {
                 dm_motor_control(motor_devices[i], CLEAR_ERROR);
                 data->online = true;
                 LOG_ERR("Motor %d is responding again, resuming...", i);
             }
         }
         dm_queue_proceed(&dm_can_tx_msgq);
-        k_sleep(K_USEC(800));
+        k_sleep(K_USEC(750));
     }
 }
 

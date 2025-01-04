@@ -18,9 +18,9 @@
 		mit_pid_0: mit_pid_0 {
 			#controller-cells = <0>;
 			compatible = "pid,mit";
-			k_p = <700>;
+			k_p = <50>;
 			k_i = <3>;
-			k_d = <800>;
+			k_d = <8>;
 		};
 	};
 	sbus0: sbus0 {
