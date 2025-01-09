@@ -4,7 +4,7 @@
         {
             "label": "Build",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c IMU",
+            "command": "west build -p always -b robomaster_board_c app/IMU",
             "args": [],
             "options": {
                 "env": {
@@ -32,7 +32,7 @@
         {
             "label": "Build & Flash",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c motor && west flash --runner openocd",
+            "command": "west build -p always -b robomaster_board_c app/IMU && west flash --runner openocd",
             "group": {
                 "kind": "build",
                 "isDefault": false

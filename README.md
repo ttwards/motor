@@ -5,8 +5,8 @@ The structure is as shown below
 ![structure](https://github.com/ttwards/motor/structure.png "Structure")
 目前我们仅完成了RM M3508电机的驱动
 ## TODO List
-- 完成RM M3508,M2006电机驱动 
-- 完成小米，达喵电机驱动
+- 完成RM M3508,M2006电机驱动✅
+- 完成达喵电机驱动✅
 - 完成运动解算设备
 - ......
 #### 目前想法还并不是很成熟，球球大佬建议
@@ -53,7 +53,7 @@ To build the application, run the following command:
 
 ```shell
 cd motor
-west build -b $BOARD motor
+west build -b $BOARD app/motor
 ```
 
 where `$BOARD` is the target board. Here you can use `robomaster_board_c`
@@ -81,6 +81,7 @@ You should have two motors set at 0x201 and 0x202, connected to CAN1.
 If everything goes well, you should see them at rpm 1222.
 The RPM is graphed via UART1
 
+另外，VS Code在下栏会显示一系列tasks，你可以在`.vscode/tasks.json`中找到它们的设置
 ```
 好无聊逗逗梅总吧
     嘬嘬嘬𐃆 ˒˒ ͏                               
