@@ -4,7 +4,7 @@
         {
             "label": "Build",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c motor",
+            "command": "west build -p always -b robomaster_board_c IMU",
             "args": [],
             "options": {
                 "env": {

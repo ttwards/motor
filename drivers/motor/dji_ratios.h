@@ -1,3 +1,8 @@
+/*	
+ * Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
 #define M3508_CURRENT2TORQUE 0.000022703f
 #define M3508_TORQUE2CURRENT 44047.0422411f
 #define M3508_SPEED2RPM      1.0f

@@ -1,5 +1,5 @@
-/*
- * Copyright (c) 2021-2022 Henrik Brix Andersen <henrik@brixandersen.dk>
+/*	
+ * Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -100,7 +100,8 @@ void console_feedback(void *arg1, void *arg2, void *arg3) {
         float gyro_z   = (float)gyro_data[2].val1 + (float)gyro_data[2].val2 / 1000000.0f;
         float gryo_c   = sqrtf(powf(gyro_x, 2) + powf(gyro_y, 2) + powf(gyro_z, 2));
         float temp_raw = ((float)temp_data.val1 + (float)temp_data.val2 / 1000000.0f);
-        LOG_INF("accel: x %.3f y %.3f z %.3f\n", (double)accel_x, (double)accel_y, (double)accel_z);
+        LOG_INF("accel: x %.3f y %.3f z %.3f\n", (double)accel_x, (double)accel_y,
+                (double)accel_z);
         LOG_INF("gyro: x %.3f y %.3f z %.3f\n", (double)gyro_x, (double)gyro_y, (double)gyro_z);
         LOG_INF("IMU Temp: %.3f\n", (double)temp_raw);
         // LOG_INF("TEMP MSB: %d LSB: %d\n", temp_data.val1, temp_data.val2);
