@@ -53,7 +53,7 @@ To build the application, run the following command:
 
 ```shell
 cd motor
-west build -b $BOARD app/motor
+west build -b $BOARD motor
 ```
 
 where `$BOARD` is the target board. Here you can use `robomaster_board_c`
@@ -84,6 +84,11 @@ The RPM is graphed via UART1
 另外，VS Code在下栏会显示一系列tasks，你可以在`.vscode/tasks.json`中找到它们的设置
 
 详细的文档请参考`Documents`文件夹
+
+### App
+我们的App都放在app目录下
+`git submodule update --init`
+从子仓库中抓取所有的数据找到父级仓库对应的那次子仓库的提交id并且检出到父项目的目录中。
 ```
 好无聊逗逗梅总吧
     嘬嘬嘬𐃆 ˒˒ ͏                               
