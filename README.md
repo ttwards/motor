@@ -82,6 +82,8 @@ If everything goes well, you should see them at rpm 1222.
 The RPM is graphed via UART1
 
 另外，VS Code在下栏会显示一系列tasks，你可以在`.vscode/tasks.json`中找到它们的设置
+
+详细的文档请参考`Documents`文件夹
 ```
 好无聊逗逗梅总吧
     嘬嘬嘬𐃆 ˒˒ ͏                               
