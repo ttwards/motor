@@ -32,7 +32,7 @@
     },
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.errorSquiggles": "disabled",
-    "cortex-debug.variableUseNaturalFormat": true,
+    "cortex-debug.variableUseNaturalFormat": false,
     "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cmake.configureOnOpen": false,
 

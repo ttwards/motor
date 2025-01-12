@@ -15,8 +15,8 @@
 	compatible = "dji,robomaster-board-c";
 
 	chosen {
-		zephyr,console = &usart6;
-		zephyr,shell-uart = &usart6;
+		zephyr,console = &usart1;
+		zephyr,shell-uart = &usart1;
 		zephyr,sram = &sram0;
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
@@ -110,6 +110,23 @@
 	status = "okay";
 };
 
+&dma1 {
+    status = "okay";
+};
+
+&dma2 {
+    status = "okay";
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pb7>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+	data-bits = <8>;
+	stop-bits = "1";
+};
+
 &usart3 {
     pinctrl-0 = <&usart3_tx_pc10 &usart3_rx_pc11>;
     pinctrl-names = "default";
@@ -123,17 +140,16 @@
     dma-names = "rx", "tx";
 };
 
-&dma1 {
-    status = "okay";
-};
-
 &usart6 {
 	pinctrl-0 = <&usart6_tx_pg14 &usart6_rx_pg9>;
 	pinctrl-names = "default";
-	current-speed = <115200>;
+	current-speed = <1500000>;
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";
+	dmas = <&dma2 6 5 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>,
+			<&dma2 1 5 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>;
+	dma-names = "tx", "rx";
 };
 
 zephyr_udc0: &usbotg_fs {
@@ -191,6 +207,31 @@ zephyr_udc0: &usbotg_fs {
 			&spi1_sck_pb3>;
 	pinctrl-names="default";
 
+    bmi08x_accel: bmi08x_accel@0 {
+        compatible = "bosch,bmi08x-accel";
+		status = "okay";
+        reg = <0>;
+        spi-max-frequency = <8000000>;
+        int-gpios = <&gpioc 4 GPIO_ACTIVE_HIGH>;
+        accel-hz = "800";
+        accel-fs = <12>;
+		int1-map-io = <0x01>;
+		int2-map-io = <0x02>;
+        int1-conf-io = <0x0A>;
+		int2-conf-io = <0x0A>;
+    };
+
+    bmi08x_gyro: bmi08x_gyro@1{
+        compatible = "bosch,bmi08x-gyro";
+		status = "okay";
+        reg = <1>;
+        spi-max-frequency = <8000000>;
+        int-gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>;
+        gyro-hz = "1000_116";
+        gyro-fs = <1000>;
+		int3-4-map-io = <0x01>;
+		int3-4-conf-io = <0x01>;
+    };
 };
 
 // &lptim1 {

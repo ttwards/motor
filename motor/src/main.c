@@ -1,4 +1,4 @@
-/*	
+/*
  * Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -27,38 +27,33 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 #define MOTOR1_NODE DT_INST(0, dm_motor)
 
 const struct device *can_dev = DEVICE_DT_GET(CANBUS_NODE);
-const struct device *motor1  = DEVICE_DT_GET(MOTOR1_NODE);
+const struct device *motor1 = DEVICE_DT_GET(MOTOR1_NODE);
 
 /* CAN Feedback to console*/
 K_THREAD_STACK_DEFINE(feedback_stack_area, 4096); // 定义线程栈
-void console_feedback(void *arg1, void *arg2, void *arg3) {
-    while (1) {
+void console_feedback(void *arg1, void *arg2, void *arg3)
+{
+	while (1) {
 
-        LOG_INF("rpm: motor1: %.2f\n", (double)motor_get_speed(motor1));
-        k_msleep(500);
-    }
+		LOG_INF("rpm: motor1: %.2f\n", (double)motor_get_speed(motor1));
+		k_msleep(500);
+	}
 }
 
-int main(void) {
-    // motor_control(motor1, ENABLE_MOTOR);
-    // motor_set_mode(motor1, MIT);
-    k_sleep(K_MSEC(50));
-    // motor_set_speed(motor1, 10);
-    motor_set_mode(motor1, MIT);
-    motor_control(motor1, ENABLE_MOTOR);
-    motor_set_speed(motor1, 2);
+int main(void)
+{
+	motor_set_mode(motor1, MIT);
+	motor_control(motor1, ENABLE_MOTOR);
+	motor_set_speed(motor1, 2);
 
-    /* Start Feedback thread*/
-    struct k_thread feedback_thread_data;
-    k_thread_create(&feedback_thread_data,
-                    feedback_stack_area, // 修改为 can_send_stack_area
-                    K_THREAD_STACK_SIZEOF(feedback_stack_area), console_feedback, (void *)motor1,
-                    NULL, NULL, 0, 0, K_MSEC(300));
+	/* Start Feedback thread*/
+	struct k_thread feedback_thread_data;
+	k_thread_create(&feedback_thread_data,
+			feedback_stack_area, // 修改为 can_send_stack_area
+			K_THREAD_STACK_SIZEOF(feedback_stack_area), console_feedback,
+			(void *)motor1, NULL, NULL, 0, 0, K_MSEC(300));
 
-    while (1) {
-        // motor1_rpm = motor_get_speed(motor1);
-        // LOG_INF("rpm: motor1: %.2f %.2f\n", (double)motor1_rpm, (double)motor_get_speed(motor1));
-        k_msleep(500);
-        // k_sleep(K_FOREVER);
-    }
+	while (1) {
+		k_msleep(500);
+	}
 }
