@@ -126,7 +126,9 @@
  ******************************************************************************
  */
 
+#include "ares/ekf/QuaternionEKF.h"
 #include "kalman_filter.h"
+#include "zephyr/sys/util.h"
 #include <zephyr/kernel.h>
 #include <stdlib.h>
 
@@ -374,6 +376,8 @@ void Kalman_Filter_P_Update(KalmanFilter_t *kf)
  */
 float *Kalman_Filter_Update(KalmanFilter_t *kf)
 {
+	QEKF_INS_t *QEKF_INS = CONTAINER_OF(kf, QEKF_INS_t, IMU_QuaternionEKF);
+
 	// 0. 获取量测信息
 	Kalman_Filter_Measure(kf);
 	if (kf->User_Func0_f != NULL) {
@@ -399,9 +403,12 @@ float *Kalman_Filter_Update(KalmanFilter_t *kf)
 		// 3. K(k) = P'(k)·HT / (H·P'(k)·HT + R)
 		Kalman_Filter_SetK(kf);
 
+		int start_us = k_cyc_to_us_near32(k_cycle_get_32());
 		if (kf->User_Func3_f != NULL) {
 			kf->User_Func3_f(kf);
 		}
+		int end_us = k_cyc_to_us_near32(k_cycle_get_32());
+		QEKF_INS->UpdateTime = end_us - start_us;
 
 		// 融合
 		// 4. xhat(k) = xhat'(k) + K(k)·(z(k) - H·xhat'(k))
@@ -413,6 +420,7 @@ float *Kalman_Filter_Update(KalmanFilter_t *kf)
 
 		// 修正方差
 		// 5. P(k) = (1-K(k)·H)·P'(k) ==> P(k) = P'(k)-K(k)·H·P'(k)
+		// 230us
 		Kalman_Filter_P_Update(kf);
 	} else {
 		// 无有效量测,仅预测

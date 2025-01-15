@@ -3,8 +3,8 @@
     "configurations": [
 
         {
-            "name": "(gdb) 启动",
-            "device": "STM32H723VGHx",
+            "name": "Launch",
+            "device": "STM32F407IGHx",
             "cwd": "${workspaceFolder}",
             "executable": "build/zephyr/zephyr.elf",
             "request": "launch",
@@ -12,25 +12,24 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-				"boards/damiao/dm_mc02/support/openocd.cfg",
-				"scripts/openocd.cfg"
+                "interface/cmsis-dap.cfg",
+                "target/stm32f4x.cfg"
+                // "esp32dap.cfg"
             ],
-            "svdFile": "${workspaceFolder}/boards/damiao/dm_mc02/support/STM32H723.svd",
-            "gdbPath": "/opt/homebrew/bin/arm-none-eabi-gdb",
-			"overrideLaunchCommands": [
-                "source ${workspaceFolder}/scripts/ares_gdb_plugin.py",
-                "monitor reset halt",
-                "-target-download",
+            "svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
+            "preRestartCommands": [
+                // "monitor reset halt"
             ],
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
             "liveWatch": {
                 "enabled": true,
                 "samplesPerSecond": 1
             },
-			"showDevDebugOutput": "raw",
+			"showDevDebugOutput": "raw"
         },
         {
             "name": "Attach",
-            "device": "STM32H723VGHx",
+            "device": "STM32F407IGHx",
             "cwd": "${workspaceFolder}",
             "executable": "build/zephyr/zephyr.elf",
             "request": "attach",
@@ -38,7 +37,8 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-                "boards/damiao/dm_mc02/support/openocd.cfg"
+                "interface/cmsis-dap.cfg",
+                "target/stm32f4x.cfg"
             ],
             "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"
         },

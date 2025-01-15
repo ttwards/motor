@@ -6,7 +6,7 @@
 		tx_id = <86>;
 		gear_ratio = <100>;
 		status = "okay";
-		can_channel = <&canbus1>;
+		can_channel = <&canbus2>;
 		controllers = <&mit_pid_0>;
 		capabilities = "mit";
 		p_max = <125>;

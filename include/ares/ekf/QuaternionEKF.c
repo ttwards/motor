@@ -324,6 +324,7 @@ static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf)
  *
  * @param kf
  */
+// 360us
 static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
 {
 	static float q0, q1, q2, q3;
