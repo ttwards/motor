@@ -83,7 +83,6 @@ void jf_channel_add(struct JFData *data, void *value, enum JF_Types type)
 
 struct JFData *jf_send_init(const struct device *uart_dev, int delay)
 {
-	int channel = 24;
 	aresPlotData.channel = 0;
 	if (!device_is_ready(uart_dev)) {
 		return NULL;

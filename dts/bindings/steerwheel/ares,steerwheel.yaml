@@ -1,0 +1,31 @@
+# Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
+description: Steer Wheel
+
+compatible: "ares,steerwheel"
+
+include: [base.yaml]
+
+properties:
+  steer-motor:
+    type: phandle
+    required: true
+  wheel-motor:
+    type: phandle
+    required: true
+  wheel-radius:
+    type: string
+    required: true
+  angle-offset:
+    type: string
+    required: true
+  inverse-steer:
+    type: boolean
+  inverse-wheel:
+    type: boolean
+
+steerwheel-cells:
+  - offset_x
+  - offset_y

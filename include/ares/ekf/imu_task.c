@@ -1,8 +1,10 @@
 #include <zephyr/drivers/sensor.h>
 #include "QuaternionEKF.c"
 #include "imu_task.h"
+#include "zephyr/arch/arm/asm_inline_gcc.h"
 #include "zephyr/sys/time_units.h"
 #include "algorithm.c"
+#include <sys/_types.h>
 
 static int count = 0;
 
@@ -26,6 +28,15 @@ static inline void IMU_Sensor_handle_update(INS_t *data)
 
 	data->gyro_prev_cyc = data->gyro_curr_cyc;
 	data->accel_prev_cyc = data->accel_curr_cyc;
+
+	if (data->update_cb != NULL) {
+		data->update_cb(&QEKF_INS);
+	}
+}
+
+static void IMU_Sensor_set_update_cb(update_cb_t cb)
+{
+	INS.update_cb = cb;
 }
 
 // 使用加速度计的数据初始化Roll和Pitch,而Yaw置0,这样可以避免在初始时候的姿态估计误差
@@ -69,6 +80,7 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 	if (trigger->type != SENSOR_TRIG_DATA_READY) {
 		return;
 	}
+	unsigned int key = arch_irq_lock();
 	int current_cyc = k_cycle_get_32();
 	sensor_sample_fetch(dev);
 	if (trigger->chan == SENSOR_CHAN_ACCEL_XYZ) {
@@ -94,6 +106,7 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 	}
 
 	IMU_Sensor_handle_update(&INS);
+	arch_irq_unlock(key);
 }
 
 float init_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f}; // [w, x, y, z]

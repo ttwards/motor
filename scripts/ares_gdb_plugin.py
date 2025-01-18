@@ -22,19 +22,22 @@ class PrintExpressionCommand(gdb.Command):
     """
 
     def __init__(self):
-        super(PrintExpressionCommand, self).__init__("plot", gdb.COMMAND_USER)
-        self.gdbReqSymbol = "aresPlotData"
-        reqStruct = gdb.parse_and_eval(self.gdbReqSymbol)
-        fdata = reqStruct["fdata"]
-    
-        # 获取数组类型信息
-        array_type = fdata.type
-        element_size = array_type.target().sizeof  # float大小
-        total_size = array_type.sizeof            # 总大小
-        self.reqArrayLen = total_size // element_size  # 数组长度
+        try:
+            super(PrintExpressionCommand, self).__init__("plot", gdb.COMMAND_USER)
+            self.gdbReqSymbol = "aresPlotData"
+            reqStruct = gdb.parse_and_eval(self.gdbReqSymbol)
+            fdata = reqStruct["fdata"]
         
-        print("there are {} available plot lines".format(self.reqArrayLen))
-        self.reqArray = reqStruct
+            # 获取数组类型信息
+            array_type = fdata.type
+            element_size = array_type.target().sizeof  # float大小
+            total_size = array_type.sizeof            # 总大小
+            self.reqArrayLen = total_size // element_size  # 数组长度
+            
+            print("there are {} available plot lines".format(self.reqArrayLen))
+            self.reqArray = reqStruct
+        except gdb.error as e:
+            print(f"Error: {e}")
 
     def parseType(self, type):
         if type.code == gdb.TYPE_CODE_INT and type.sizeof == 1 and not type.is_signed:

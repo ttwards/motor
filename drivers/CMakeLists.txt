@@ -16,3 +16,5 @@ add_subdirectory_ifdef(CONFIG_MOTOR_DM motor)
 add_subdirectory_ifdef(CONFIG_MOTOR_DM pid)
 
 add_subdirectory_ifdef(CONFIG_ARES_SBUS transfer)
+
+add_subdirectory_ifdef(CONFIG_CHASSIS chassis)

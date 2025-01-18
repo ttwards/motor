@@ -1,0 +1,34 @@
+# Chassis driver configuration options
+
+# Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig CHASSIS
+    bool "Chassis drivers"
+    help
+      Enable support for chassis.
+
+if CHASSIS
+
+module = CHASSIS
+module-str = CHASSIS
+source "subsys/logging/Kconfig.template.log_config"
+
+config CHASSIS_MAX_STEERWHHEL_COUNT
+    int "CHASSIS MAX STEERWHHEL COUNT"
+    help
+      Add support for dji motors
+
+config CHASSIS_LOG_LEVEL
+    int "Motor log level"
+    default 4
+    help
+      The log level of chassis driver
+
+config CHASSIS_INIT_PRIORITY
+	int "Chassis init priority"
+	default 90
+	help
+	  The init priority of chassis driver
+
+endif

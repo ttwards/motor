@@ -7,12 +7,15 @@
 #include "syscalls/pid.h"
 #include "zephyr/device.h"
 #include "zephyr/devicetree.h"
+#include "zephyr/spinlock.h"
+#include "zephyr/toolchain.h"
 #include <string.h>
 #include <math.h>
 #include <soc.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/_types.h>
 #include <sys/types.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -96,12 +99,12 @@ static int16_t to16t(float value)
 	}
 }
 
-static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3);
+static void can_send_entry(void *arg1, void *arg2, void *arg3);
 struct motor_controller ctrl_structs[CAN_COUNT] = {
 	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
 
-K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, ctrl_structs,
-		can_devices, motor_devices, CAN_SEND_PRIORITY, 0, 10);
+K_THREAD_DEFINE(dji_motor_ctrl_thread, CAN_SEND_STACK_SIZE, can_send_entry, NULL, NULL, NULL,
+		CAN_SEND_PRIORITY, 0, 0);
 
 static inline motor_id_t canbus_id(const struct device *dev)
 {
@@ -119,10 +122,30 @@ static inline motor_id_t motor_id(const struct device *dev)
 	return cfg->common.id - 1;
 }
 
+void dji_speed_limit(const struct device *dev, float max_speed, float min_speed)
+{
+	struct dji_motor_data *data = dev->data;
+	data->common.speed_limit[0] = min_speed;
+	data->common.speed_limit[1] = max_speed;
+}
+
+void dji_torque_limit(const struct device *dev, float max_torque, float min_torque)
+{
+	struct dji_motor_data *data = dev->data;
+	data->common.torque_limit[0] = min_torque;
+	data->common.torque_limit[1] = max_torque;
+}
+
 int dji_set_speed(const struct device *dev, float speed_rpm)
 {
 	struct dji_motor_data *data = dev->data;
 	const struct dji_motor_config *cfg = dev->config;
+
+	if (speed_rpm > data->common.speed_limit[1]) {
+		speed_rpm = data->common.speed_limit[1];
+	} else if (speed_rpm < data->common.speed_limit[0]) {
+		speed_rpm = data->common.speed_limit[0];
+	}
 
 	data->target_rpm = speed_rpm;
 	for (int i = 0; i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]);
@@ -144,7 +167,16 @@ int dji_set_angle(const struct device *dev, float angle)
 	struct dji_motor_data *data = dev->data;
 	const struct dji_motor_config *cfg = dev->config;
 
+	if (angle > 360) {
+		angle = fmodf(angle, 360);
+	} else if (angle < 0) {
+		while (angle < 0) {
+			angle += 360;
+		}
+	}
+
 	data->target_angle = angle;
+
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
 		if (cfg->common.controller[i] == NULL) {
 			break;
@@ -162,6 +194,12 @@ int dji_set_torque(const struct device *dev, float torque)
 {
 	struct dji_motor_data *data = dev->data;
 	const struct dji_motor_config *cfg = dev->config;
+
+	if (torque > data->common.torque_limit[1]) {
+		torque = data->common.torque_limit[1];
+	} else if (torque < data->common.torque_limit[0]) {
+		torque = data->common.torque_limit[0];
+	}
 
 	data->target_torque = torque;
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
@@ -194,8 +232,8 @@ void dji_control(const struct device *dev, enum motor_cmd cmd)
 		data->online = false;
 		break;
 	case SET_ZERO_OFFSET:
-		data->RAWangle_add = 0;
-		data->RAWangle = 0;
+		data->angle_add = 0;
+		data->common.angle = 0;
 		break;
 	case CLEAR_PID:
 		break;
@@ -209,7 +247,7 @@ void dji_control(const struct device *dev, enum motor_cmd cmd)
 float dji_get_angle(const struct device *dev)
 {
 	struct dji_motor_data *data = dev->data;
-	return data->common.angle;
+	return fmodf(data->common.angle, 360.0f);
 }
 
 float dji_get_speed(const struct device *dev)
@@ -243,20 +281,29 @@ int dji_init(const struct device *dev)
 		for (int i = 0;
 		     i < sizeof(cfg->common.controller) / sizeof(cfg->common.controller[0]); i++) {
 			if (cfg->common.controller[i] == NULL) {
+				if (i > 0) {
+					pid_reg_output(cfg->common.controller[i - 1],
+						       &data->target_torque);
+				}
 				break;
 			}
 			if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
 				pid_reg_input(cfg->common.controller[i], &data->common.rpm,
 					      &data->target_rpm);
-				pid_reg_output(cfg->common.controller[i], &data->target_torque);
+				if (i > 0) {
+					pid_reg_output(cfg->common.controller[i - 1],
+						       &data->target_rpm);
+				}
 			} else if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
-				pid_reg_input(cfg->common.controller[i], &data->common.angle,
-					      &data->target_angle);
-				pid_reg_output(cfg->common.controller[i], &data->target_rpm);
+				pid_reg_input(cfg->common.controller[i], &data->pid_angle_input,
+					      &data->pid_ref_input);
 			} else if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
 				pid_reg_input(cfg->common.controller[i], &data->common.torque,
 					      &data->target_torque);
-				pid_reg_output(cfg->common.controller[i], &data->target_current);
+				if (i > 0) {
+					pid_reg_output(cfg->common.controller[i - 1],
+						       &data->target_torque);
+				}
 			} else {
 				LOG_ERR("Unsupported motor mode");
 				return -1;
@@ -267,7 +314,7 @@ int dji_init(const struct device *dev)
 		data->current_mode_index = 0;
 		data->ctrl_struct->motor_devs[id] = (struct device *)dev;
 		data->prev_time = 0;
-		data->ctrl_struct->flags |= 1 << id;
+		data->ctrl_struct->flags = 0;
 		data->ctrl_struct->mapping[frame_id][id % 4] = id;
 		if (cfg->is_gm6020) {
 			data->convert_num = GM6020_CONVERT_NUM;
@@ -310,6 +357,12 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	}
 	struct dji_motor_data *motor_data = ctrl_struct->motor_devs[id]->data;
 	uint32_t prev_time = motor_data->curr_time;
+
+	k_spinlock_key_t key;
+	if (k_spin_trylock(&motor_data->data_input_lock, &key) != 0) {
+		return;
+	}
+
 	if (!motor_data) {
 		return;
 	}
@@ -336,20 +389,23 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	bool full = false;
 	for (int i = 0; i < 5; i++) {
 		uint8_t combined = ctrl_struct[bus_id].mask[i] | ctrl_struct[bus_id].flags;
-		if (combined == 0xF0 || combined == 0x0F) {
+		if ((((combined | 0xF0)) == 0xF0) || ((combined | 0x0F) == 0x0F)) {
 			//   ctrl_struct->flags ^= 0xF;
 			ctrl_struct[bus_id].full[i] = true;
 			full = true;
 		}
 	}
+
 	if (full) {
 		k_sem_give(&ctrl_struct->thread_sem);
 	}
 	// k_thread_resume(dji_motor_ctrl_thread);
+	k_spin_unlock(&motor_data->data_input_lock, key);
 	return;
 }
 
 static const struct can_filter filter20x = {.id = 0x200, .mask = 0x3F0, .flags = 0};
+static const struct can_filter test = {.id = 0x1, .mask = 0x3FF, .flags = 0};
 
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
 {
@@ -357,15 +413,49 @@ static void can_tx_callback(const struct device *can_dev, int error, void *user_
 	k_sem_give(queue_sem);
 }
 
-static int delta_degree(uint16_t angle, uint16_t prev_angle)
+static void proceed_delta_degree(const struct device *dev)
 {
-	int delta = angle - prev_angle;
-	if (angle < 2048 && prev_angle > 6144) {
+	struct dji_motor_data *data_temp = dev->data;
+	const struct dji_motor_config *config_temp = dev->config;
+	int delta = data_temp->RAWangle - data_temp->RAWprev_angle;
+	if (data_temp->RAWangle < 2048 && data_temp->RAWprev_angle > 6144) {
 		delta += 8192;
-	} else if (angle > 6144 && prev_angle < 2048) {
+		data_temp->common.round_cnt++;
+	} else if (data_temp->RAWangle > 6144 && data_temp->RAWprev_angle < 2048) {
 		delta -= 8192;
+		data_temp->common.round_cnt--;
 	}
-	return delta;
+
+	if (fabsf(config_temp->gear_ratio - 1) > 0.001f) {
+		// I dont know why RAW_angle for M3508 is 4 times of angle
+		data_temp->angle_add +=
+			(float)(delta)*convert[data_temp->convert_num][ANGLE2DEGREE] /
+			(config_temp->gear_ratio);
+
+		data_temp->common.angle = fmodf(data_temp->angle_add, 360.0f);
+		while (data_temp->common.angle < 0) {
+			data_temp->common.angle += 360.0f;
+		}
+	} else {
+		data_temp->common.angle = (float)(data_temp->RAWangle) *
+					  convert[data_temp->convert_num][ANGLE2DEGREE];
+	}
+
+	float delta_angle = data_temp->common.angle - data_temp->target_angle;
+
+	if (delta_angle > 0) {
+		if (delta_angle < 180) {
+			data_temp->pid_angle_input = delta_angle;
+		} else {
+			data_temp->pid_angle_input = delta_angle - 360.0f;
+		}
+	} else if (delta_angle < 0) {
+		if (delta_angle > -180) {
+			data_temp->pid_angle_input = delta_angle;
+		} else {
+			data_temp->pid_angle_input = delta_angle + 360.0f;
+		}
+	}
 }
 
 static void can_pack_add(uint8_t *data, struct device *motor_dev, uint8_t num)
@@ -404,21 +494,21 @@ static void motor_calc(const struct device *dev)
 {
 	const struct device *dev_temp = dev;
 	struct dji_motor_data *data_temp = dev_temp->data;
+	k_spinlock_key_t key;
+	if (k_spin_trylock(&data_temp->data_input_lock, &key) != 0) {
+		return;
+	}
 	const struct dji_motor_config *config_temp = dev_temp->config;
 	// Proceed the RAW data
 	// Add up to avoid circular overflow
-	data_temp->RAWangle_add += delta_degree(data_temp->RAWangle, data_temp->RAWprev_angle);
-	data_temp->RAWangle_add %= (int)(8192 * config_temp->gear_ratio * 100);
-	// I dont know why RAW_angle is 4 times of angle
-	data_temp->common.angle = fmodf((float)(data_temp->RAWangle_add) *
-						convert[data_temp->convert_num][ANGLE2DEGREE] /
-						(4 * config_temp->gear_ratio),
-					360.0f);
+	proceed_delta_degree(dev_temp);
+
 	data_temp->common.rpm = data_temp->RAWrpm * convert[data_temp->convert_num][SPEED2RPM] /
 				config_temp->gear_ratio;
 	data_temp->common.torque = data_temp->RAWcurrent *
 				   convert[data_temp->convert_num][CURRENT2TORQUE] *
 				   config_temp->gear_ratio;
+
 	// If current_mode_index is -1, it means the motor is in torque control.
 	// From the current mode index to the end of the controller array
 	bool torque_proceeded = false;
@@ -428,35 +518,57 @@ static void motor_calc(const struct device *dev)
 			if (torque_proceeded) {
 				break;
 			}
+			if (data_temp->target_torque > data_temp->common.torque_limit[1]) {
+				data_temp->target_torque = data_temp->common.torque_limit[1];
+			} else if (data_temp->target_torque < data_temp->common.torque_limit[0]) {
+				data_temp->target_torque = data_temp->common.torque_limit[0];
+			}
 			data_temp->target_current = data_temp->target_torque /
 						    config_temp->gear_ratio *
 						    convert[data_temp->convert_num][TORQUE2CURRENT];
 			break;
 		}
+
 		pid_calc(config_temp->common.controller[i]);
+
+		if (strcmp(config_temp->common.capabilities[i], "angle") == 0) {
+			if (data_temp->target_rpm > data_temp->common.speed_limit[1]) {
+				data_temp->target_rpm = data_temp->common.speed_limit[1];
+			} else if (data_temp->target_rpm < data_temp->common.speed_limit[0]) {
+				data_temp->target_rpm = data_temp->common.speed_limit[0];
+			}
+		}
+
 		if (strcmp(config_temp->common.capabilities[i], "torque") == 0) {
 			torque_proceeded = true;
 		} else if (strcmp(config_temp->common.capabilities[i], "mit") == 0) {
 			break;
 		}
 	}
+	k_spin_unlock(&data_temp->data_input_lock, key);
 }
 
 struct can_frame txframe;
 
-static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, void *arg3)
+static void can_send_entry(void *arg1, void *arg2, void *arg3)
 {
-	k_sem_init(&(ctrl_struct[0].thread_sem), 0, 2);
+	ARG_UNUSED(arg1);
+	ARG_UNUSED(arg2);
+	ARG_UNUSED(arg3);
+	k_sem_init(&(ctrl_structs[0].thread_sem), 0, 2);
 	struct device *can_dev = NULL;
 	for (int i = 0; i < CAN_COUNT; i++) {
 		k_sem_init(&tx_queue_sem[i], 3, 3); // 初始化信号量
 
-		can_dev = (struct device *)ctrl_struct[i].can_dev;
+		can_dev = (struct device *)ctrl_structs[i].can_dev;
 		can_start(can_dev);
 		if (i != 0) {
-			ctrl_struct[i].thread_sem = ctrl_struct[0].thread_sem;
+			ctrl_structs[i].thread_sem = ctrl_structs[0].thread_sem;
 		}
-		int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_struct[i], &filter20x);
+		int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &test);
+		err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &test);
+		err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &filter20x);
+
 		if (err < 0) {
 			LOG_ERR("Error adding CAN filter (err %d)", err);
 		}
@@ -465,26 +577,25 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
 		// can ignore that.
 	}
 	int err = 0;
-	k_sleep(K_MSEC(60));
 	while (1) {
 		for (int8_t i = 0; i < CAN_COUNT; i++) {
 			for (int j = 0; j < 5; j++) {
-				if (ctrl_struct[i].full[j] == 1) {
-					uint8_t id_temp = ctrl_struct[i].mapping[0][0];
+				if (ctrl_structs[i].full[j] == 1) {
+					uint8_t id_temp = ctrl_structs[i].mapping[0][0];
 					uint8_t data[8] = {0};
 					bool packed = false;
 					for (int k = 0; k < 4; k++) {
-						id_temp = ctrl_struct[i].mapping[j][k];
+						id_temp = ctrl_structs[i].mapping[j][k];
 						// Check if recieved just now.
 						if (id_temp < 8 &&
-						    (ctrl_struct[i].flags & (1 << id_temp))) {
-							motor_calc(
-								ctrl_struct[i].motor_devs[id_temp]);
+						    (ctrl_structs[i].flags & (1 << id_temp))) {
+							motor_calc(ctrl_structs[i]
+									   .motor_devs[id_temp]);
 							can_pack_add(
 								data,
-								ctrl_struct[i].motor_devs[id_temp],
+								ctrl_structs[i].motor_devs[id_temp],
 								k);
-							ctrl_struct[i].flags ^= 1 << id_temp;
+							ctrl_structs[i].flags ^= 1 << id_temp;
 							packed = true;
 						}
 					}
@@ -493,7 +604,7 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
 						txframe.dlc = 8;
 						txframe.flags = 0;
 						memcpy(txframe.data, data, sizeof(data));
-						can_dev = (struct device *)ctrl_struct[i].can_dev;
+						can_dev = (struct device *)ctrl_structs[i].can_dev;
 						err = k_sem_take(&tx_queue_sem[i], K_NO_WAIT);
 						if (err == 0) {
 							err = can_send(can_dev, &txframe, K_NO_WAIT,
@@ -508,14 +619,14 @@ static void can_send_entry(struct motor_controller *ctrl_struct, void *arg2, voi
 				}
 			}
 		}
-		k_sem_take(&(ctrl_struct[0].thread_sem), K_MSEC(2));
+		k_sem_take(&(ctrl_structs[0].thread_sem), K_MSEC(1));
 
 		int curr_time = k_cycle_get_32();
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 8; j++) {
-				if (ctrl_struct[i].motor_devs[j]) {
-					dji_timeout_handle(ctrl_struct[i].motor_devs[i], curr_time,
-							   &ctrl_struct[i]);
+				if (ctrl_structs[i].motor_devs[j]) {
+					dji_timeout_handle(ctrl_structs[i].motor_devs[i], curr_time,
+							   &ctrl_structs[i]);
 				}
 			}
 		}

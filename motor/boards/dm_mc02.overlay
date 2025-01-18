@@ -1,26 +1,31 @@
 / {
-	motor1: motor1{
-		compatible = "dm,motor";
-		id = <24>;
-		rx_id = <24>;
-		tx_id = <86>;
-		gear_ratio = <100>;
+	motor0: motor0{
+		compatible = "dji,motor";
+		is_m3508;
+		id = <1>;
+		rx_id = <0x201>;
+		tx_id = <0x200>;
+		gear_ratio = <1920>;
 		status = "okay";
-		can_channel = <&canbus2>;
-		controllers = <&mit_pid_0>;
-		capabilities = "mit";
-		p_max = <125>;
-		v_max = <450>;
-		t_max = <100>;
+		can_channel = <&canbus1>;
+		controllers = <&angle_pid_1 &speed_pid_1>;
+		capabilities = "angle", "speed";
 	};
 
 	pid {
-		mit_pid_0: mit_pid_0 {
+		angle_pid_1: angle_pid_1 {
 			#controller-cells = <0>;
-			compatible = "pid,mit";
-			k_p = <50>;
+			compatible = "pid,single";
+			k_p = <700>;
 			k_i = <3>;
-			k_d = <8>;
+			k_d = <800>;
+		};
+		speed_pid_1: speed_pid_1 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <180>;
+			k_i = <20>;
+			k_d = <20>;
 		};
 	};
 	sbus0: sbus0 {

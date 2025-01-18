@@ -1,0 +1,20 @@
+# Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
+description: Steer Wheel Chassis
+
+compatible: "ares,swchassis"
+
+include: [base.yaml]
+
+properties:
+  steerwheels:
+    type: phandle-array
+    required: true
+    specifier-space: steerwheel
+  speed-limit:
+    type: string
+  angle-pid:
+    type: phandle
+    required: true

@@ -22,7 +22,7 @@ properties:
     type: phandle
     required: true  
   gear_ratio:
-    type: int
+    type: string
     required: true
   controllers:
     type: phandles

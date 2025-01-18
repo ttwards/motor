@@ -22,9 +22,9 @@ LOG_MODULE_REGISTER(pid_mit, CONFIG_MOTOR_LOG_LEVEL);
 
 #define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
 	{                                                                                          \
-		.k_p = DT_PROP(node_id, k_p) / 10000.0f,                                           \
-		.k_i = DT_PROP(node_id, k_i) / 100.0f,                                             \
-		.k_d = DT_PROP(node_id, k_d) / 100.0f,                                             \
+		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
+		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
+		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
 	}
 
 static bool float_equal(float a, float b)

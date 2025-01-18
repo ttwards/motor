@@ -1,15 +1,16 @@
 #include <stdint.h>
 #include <zephyr/drivers/sensor.h>
 #include "QuaternionEKF.h"
-#include "algorithm.h"
 
-#define X 0
-#define Y 1
-#define Z 2
+static const int X = 0;
+static const int Y = 1;
+static const int Z = 2;
 
 #define FREQ 800
 
-const int n = 800 / FREQ;
+	const int n = 800 / FREQ;
+
+typedef void (*update_cb_t)(QEKF_INS_t *QEKF);
 
 typedef struct {
 	// IMU量测值
@@ -27,6 +28,8 @@ typedef struct {
 
 	int gyro_curr_cyc;
 	int accel_curr_cyc;
+
+	update_cb_t update_cb;
 } INS_t;
 
 /* 用于修正安装误差的参数 */

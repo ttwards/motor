@@ -17,8 +17,6 @@
 #include "QuaternionEKF.h"
 #include "kalman_filter.h"
 #include "kalman_filter.c"
-#include "zephyr/kernel.h"
-#include "zephyr/sys/time_units.h"
 #include <zephyr/kernel.h>
 
 QEKF_INS_t QEKF_INS;

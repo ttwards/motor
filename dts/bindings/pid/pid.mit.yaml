@@ -10,11 +10,11 @@ include: [base.yaml]
 
 properties:
   k_p:
-    type: int
+    type: string
     required: true
   k_i:
-    type: int
+    type: string
     required: true
   k_d: 
-    type: int
+    type: string
     required: true

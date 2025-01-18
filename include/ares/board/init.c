@@ -22,6 +22,12 @@ static const struct gpio_dt_spec pwr2 = GPIO_DT_SPEC_GET(XT30_2_NODE, gpios);
 
 const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 
+void pwr_init(void)
+{
+	gpio_pin_configure_dt(&pwr1, GPIO_OUTPUT_HIGH);
+	gpio_pin_configure_dt(&pwr2, GPIO_OUTPUT_HIGH);
+}
+
 #define PWR_INIT pwr_init();
 #define LED_INIT
 
@@ -29,16 +35,16 @@ const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 
 #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
 
-#define LED_BLUE  DT_ALIAS(led0)
-#define LED_GREEN DT_ALIAS(led1)
-#define LED_RED   DT_ALIAS(led2)
+// #define LED_BLUE  DT_ALIAS(led0)
+// #define LED_GREEN DT_ALIAS(led1)
+// #define LED_RED   DT_ALIAS(led2)
 
-const struct device *led_blue = DEVICE_DT_GET(LED_BLUE);
-const struct device *led_green = DEVICE_DT_GET(LED_GREEN);
-const struct device *led_red = DEVICE_DT_GET(LED_RED);
+// const struct device *led_blue = DEVICE_DT_GET(LED_BLUE);
+// const struct device *led_green = DEVICE_DT_GET(LED_GREEN);
+// const struct device *led_red = DEVICE_DT_GET(LED_RED);
 
 #define PWR_INIT
-#define LED_INIT led_init();
+#define LED_INIT
 
 #endif /* CONFIG_BOARD_ROBOMASTER_BOARD_C */
 
@@ -51,16 +57,10 @@ void led_set_rgb(struct led_rgb *color)
 #endif /* CONFIG_BOARD_DM_MC02 */
 
 #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
-	led_set_brightness(led_blue, 1, color->b);
-	led_set_brightness(led_green, 1, color->g);
-	led_set_brightness(led_red, 1, color->r);
+	// led_set_brightness(led_blue, 1, color->b);
+	// led_set_brightness(led_green, 1, color->g);
+	// led_set_brightness(led_red, 1, color->r);
 #endif /* CONFIG_BOARD_ROBOMASTER_BOARD_C */
-}
-
-void pwr_init(void)
-{
-	gpio_pin_configure_dt(&pwr1, GPIO_OUTPUT_HIGH);
-	gpio_pin_configure_dt(&pwr2, GPIO_OUTPUT_HIGH);
 }
 
 void led_serivce_func(void *p1, void *p2, void *p3)
@@ -97,21 +97,21 @@ void led_serivce_func(void *p1, void *p2, void *p3)
 	}
 }
 
-static K_THREAD_STACK_DEFINE(led_serivce_stack, 1024); // 定义线程栈
-static struct k_thread led_service_thread;
-void led_init(void)
-{
-	struct led_rgb color = RGB(0x00, 0x0f, 0x0f);
-	led_set_rgb(&color);
-	k_sleep(K_MSEC(1000));
-	k_thread_create(&led_service_thread, led_serivce_stack,
-			K_THREAD_STACK_SIZEOF(led_serivce_stack), led_serivce_func, NULL, NULL,
-			NULL, -1, 0, K_NO_WAIT);
-}
+// static K_THREAD_STACK_DEFINE(led_serivce_stack, 1024); // 定义线程栈
+// static struct k_thread led_service_thread;
+// void led_init(void)
+// {
+// 	// struct led_rgb color = RGB(0x00, 0x0f, 0x0f);
+// 	// led_set_rgb(&color);
+// 	// k_sleep(K_MSEC(1000));
+// 	// k_thread_create(&led_service_thread, led_serivce_stack,
+// 	// 		K_THREAD_STACK_SIZEOF(led_serivce_stack), led_serivce_func, NULL, NULL,
+// 	// 		NULL, -1, 0, K_NO_WAIT);
+// }
 
 void board_init(void)
 {
 	PWR_INIT
 	LED_INIT
-	printk("Board init done");
+	printk("Board init done.\n");
 }

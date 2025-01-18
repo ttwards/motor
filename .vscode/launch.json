@@ -4,7 +4,7 @@
 
         {
             "name": "(gdb) 启动",
-            "device": "STM32H723VGHx",
+            "device": "STM32F407IGHx",
             "cwd": "${workspaceFolder}",
             "executable": "build/zephyr/zephyr.elf",
             "request": "launch",
@@ -12,10 +12,10 @@
             "runToEntryPoint": "main",
             "servertype": "openocd",
             "configFiles": [
-				"boards/damiao/dm_mc02/support/openocd.cfg",
+				"boards/dji/robomaster_board_c/support/openocd.cfg",
 				"scripts/openocd.cfg"
             ],
-            "svdFile": "${workspaceFolder}/boards/damiao/dm_mc02/support/STM32H723.svd",
+            "svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
             "gdbPath": "/opt/homebrew/bin/arm-none-eabi-gdb",
 			"overrideLaunchCommands": [
                 "source ${workspaceFolder}/scripts/ares_gdb_plugin.py",
