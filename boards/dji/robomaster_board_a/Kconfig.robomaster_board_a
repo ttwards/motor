@@ -1,0 +1,4 @@
+
+
+config BOARD_ROBOMASTER_BOARD_A
+	select SOC_STM32F427XX
