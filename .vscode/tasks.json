@@ -4,13 +4,9 @@
         {
             "label": "Build",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c app/IMU",
+            "command": "source ~/zephyrproject/.venv/bin/activate && west build -p always -b robomaster_board_c src/text_c",
             "args": [],
-            "options": {
-                "env": {
-                    "PATH": "/opt/miniconda3/bin:${env:PATH}"
-                }
-            },
+            
             "group": {
                 "kind": "build",
                 "isDefault": false
@@ -21,7 +17,7 @@
         {
             "label": "Flash",
             "type": "shell",
-            "command": "west flash --runner openocd",
+            "command": "source ~/zephyrproject/.venv/bin/activate && west flash ",
             "group": {
                 "kind": "build",
                 "isDefault": false
@@ -32,24 +28,13 @@
         {
             "label": "Build & Flash",
             "type": "shell",
-            "command": "west build -p always -b robomaster_board_c app/IMU && west flash --runner openocd",
+            "command": "source ~/zephyrproject/.venv/bin/activate && west build -p always -b robomaster_board_a src/text_a && west flash ",
             "group": {
                 "kind": "build",
                 "isDefault": false
             },
             "problemMatcher": [],
             "detail": "Build and flash the Zephyr project"
-        },
-        {
-            "label": "Tidy",
-            "type": "shell",
-            "command": "west build -t tidy",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "problemMatcher": ["$gcc"],
-            "detail": "Tidy up codes"
         },
         {
             "label": "Monitor",

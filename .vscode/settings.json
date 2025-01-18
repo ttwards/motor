@@ -15,24 +15,18 @@
             "task": "Build & Flash",
             "tooltip": "Build and flash the Zephyr project"
         },
-        {
-            "label": "Tidy",
-            "task": "Tidy",
-            "tooltip": "Build the Zephyr project"
-        },
+        
         {
             "label": "Monitor",
             "task": "Monitor",
             "tooltip": "Monitor via RTT Console"
         }
     ],
-    "[c]": {
-        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-        "editor.formatOnSave": true
-    },
+    
+
     "C_Cpp.formatting": "clangFormat",
     "C_Cpp.errorSquiggles": "disabled",
-    "cortex-debug.variableUseNaturalFormat": false,
+    "cortex-debug.variableUseNaturalFormat": true,
     "C_Cpp.default.compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
     "cmake.configureOnOpen": false,
 

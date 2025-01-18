@@ -1,0 +1,86 @@
+/ {
+    
+	
+	
+	// pwm_test {
+	// 	compatible = "pwm-test";
+	// 	status = "okay";
+			
+	// 	test_pwm: test_out{
+	// 		pwms = <&pwm1 1 PWM_USEC(100) PWM_POLARITY_NORMAL>;
+	// 	};
+	// };
+	
+	
+	rm_motor {
+		motor0: motor0{
+			compatible = "dji,motor";
+            is_m2006;
+			id = <1>;
+            rx_id = <0x201>;
+            tx_id = <0x200>;
+			gear_ratio = <3600>;
+			status = "okay";
+			can_channel = <&canbus2>;
+			controllers = <&angle_pid_1 &speed_pid_1>;
+			capabilities = "angle", "speed";
+		};
+		
+	};
+		
+	
+
+	pid {
+		angle_pid_1: angle_pid_1 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <700>;
+			k_i = <3>;
+			k_d = <800>;
+		};
+		speed_pid_1: speed_pid_1 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <180>;
+			k_i = <20>;
+			k_d = <20>;
+		};
+		angle_pid_2: angle_pid_2 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <700>;
+			k_i = <3>;
+			k_d = <800>;
+		};
+		speed_pid_2: speed_pid_2 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <180>;
+			k_i = <20>;
+			k_d = <20>;
+		};
+		angle_pid_3: angle_pid_3 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <700>;
+			k_i = <3>;
+			k_d = <800>;
+		};
+		speed_pid_3: speed_pid_3 {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = <180>;
+			k_i = <20>;
+			k_d = <20>;
+		};
+	};
+	sbus0: sbus0 {
+		compatible = "ares,sbus";
+		status = "okay";
+	};
+};
+&pwm1 {
+	status = "okay";
+};
+
+

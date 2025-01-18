@@ -1,5 +1,0 @@
-# Motor Drivers for Zephyr RTOS
-### I am totally against Linus's dictatorial behaviour of wiping out the Linux Maintainer on 10.23 on the basis of nationality.
-## This a project supported by various members in SUSTech ARES the robot club.
-### We are attempting to describe the robot in a device tree model.
-### This helps cut down costs processing the relationships between chassis, motor or so.

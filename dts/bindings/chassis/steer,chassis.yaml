@@ -1,0 +1,35 @@
+description: Steer chassis binding
+
+compatible: "steer,chassis"
+
+include: [base.yaml]
+
+properties:
+  wheel-count:
+    type: int
+    required: true
+    description: Number of wheels in the chassis
+
+child-binding:
+  description: Configuration for each swerve wheel
+  properties:
+    drive-motor:
+      type: phandle
+      required: true
+      description: Reference to the drive motor node
+    steering-motor:
+      type: phandle
+      required: true
+      description: Reference to the steering motor node
+    wheel-distance:
+      type: int
+      required: true
+      description: Wheel-to-chassis center distance (millimeters)
+    wheel-angle:
+      type: int
+      required: true
+      description: Angle between the wheel-to-chassis center line and the x-axis (0.1 degrees)
+    wheel-radius:
+      type: int
+      required: true
+      description: Wheel radius (millimeters)
