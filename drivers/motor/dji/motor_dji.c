@@ -266,8 +266,8 @@ int dji_init(const struct device *dev)
 		struct dji_motor_data *data = dev->data;
 		uint8_t frame_id = frames_id(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
-		data->ctrl_struct->mask[frame_id] |= id >= 4 ? 0xF0 : 0x0F;
-		data->ctrl_struct->mask[frame_id] ^= 1 << id;
+
+		data->ctrl_struct->mask[frame_id] |= 1 << id;
 		data->ctrl_struct->rx_ids[id] = cfg->common.rx_id;
 
 		data->ctrl_struct->full_handle.handler = dji_tx_handler;
@@ -325,7 +325,6 @@ int dji_init(const struct device *dev)
 			return -1;
 		}
 		if (dji_miss_handle_timer.expiry_fn == NULL) {
-			dji_miss_handle_timer.expiry_fn = dji_miss_isr_handler;
 			k_timer_init(&dji_miss_handle_timer, dji_miss_isr_handler, NULL);
 			k_timer_start(&dji_miss_handle_timer, K_NO_WAIT, K_MSEC(2));
 		}
@@ -371,7 +370,8 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 		motor_data->online = true;
 		const struct dji_motor_config *motor_cfg =
 			(const struct dji_motor_config *)ctrl_struct->motor_devs[id]->config;
-		ctrl_struct[bus_id].mask[frames_id(motor_cfg->common.tx_id)] ^= 1 << id;
+		int8_t frame_id = frames_id(motor_cfg->common.tx_id);
+		ctrl_struct[bus_id].mask[frame_id] ^= 1 << id;
 	} else if (motor_data->missed_times > 0) {
 		motor_data->missed_times--;
 	}
@@ -387,8 +387,8 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	motor_data->prev_time = prev_time;
 	bool full = false;
 	for (int i = 0; i < 5; i++) {
-		uint8_t combined = ctrl_struct[bus_id].mask[i] | ctrl_struct[bus_id].flags;
-		if ((((combined | 0xF0)) == 0xF0) || ((combined | 0x0F) == 0x0F)) {
+		uint8_t combined = ctrl_struct[bus_id].mask[i] & ctrl_struct[bus_id].flags;
+		if (combined == ctrl_struct[bus_id].mask[i]) {
 			//   ctrl_struct->flags ^= 0xF;
 			ctrl_struct[bus_id].full[i] = true;
 			full = true;
@@ -480,8 +480,7 @@ static void dji_timeout_handle(const struct device *dev, uint32_t curr_time,
 		motor_data->missed_times++;
 		if (motor_data->missed_times > 3) {
 			LOG_ERR("Motor %d is not responding", motor_cfg->common.id);
-			ctrl_struct[motor_data->canbus_id]
-				.mask[frames_id(motor_cfg->common.tx_id)] ^=
+			ctrl_struct->mask[frames_id(motor_cfg->common.tx_id)] ^=
 				1 << (motor_cfg->common.id - 1);
 			motor_data->online = false;
 		}
@@ -563,7 +562,7 @@ void dji_miss_handler(struct k_work *work)
 	for (int i = 0; i < CAN_COUNT; i++) {
 		for (int j = 0; j < 8; j++) {
 			if (ctrl_structs[i].motor_devs[j]) {
-				dji_timeout_handle(ctrl_structs[i].motor_devs[i], curr_time,
+				dji_timeout_handle(ctrl_structs[i].motor_devs[j], curr_time,
 						   &ctrl_structs[i]);
 			}
 		}
