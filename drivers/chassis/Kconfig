@@ -1,0 +1,14 @@
+menuconfig CHASSIS
+  bool "Swerve Chassis Driver Support"
+  depends on Motor
+  help
+    Enable support for the swerve chassis driver, including
+    features such as steering and wheel configuration.
+
+if CHASSIS
+  config CHASSIS_STEER
+    bool "Steer Chassis"
+    depends on CHASSIS
+    help
+      Enable support for swerve steering in the chassis driver.
+endif # CHASSIS

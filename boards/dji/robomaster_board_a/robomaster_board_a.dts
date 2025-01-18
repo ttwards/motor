@@ -1,0 +1,367 @@
+
+
+/dts-v1/;
+#include <st/f4/stm32f427Xi.dtsi>
+#include <st/f4/stm32f427i(g-i)hx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+
+/ {
+	model = "DJI Robomaster Development Board A";
+	compatible = "dji,robomaster-board-a";
+
+	chosen {
+		zephyr,console = &usart6;
+		zephyr,shell-uart = &usart6;
+		zephyr,sram = &sram0;
+		zephyr,button = &user_button;
+		zephyr,flash = &flash0;
+		zephyr,canbus = &can1;
+		sbus,uart = &usart1;
+	};
+
+	aliases {
+		led0 = &led_0;
+		led1 = &led_1;
+		led2 = &led_2;
+		led3 = &led_3;
+		led4 = &led_4;
+		led5 = &led_5;
+		led6 = &led_6;
+		led7 = &led_7;
+		led8 = &led_0_green;
+		led9 = &led_1_red;
+
+		watchdog0 = &iwdg;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led_0: led_0 {
+			gpios = <&gpiog 1 GPIO_ACTIVE_HIGH>;
+			label = "LED0";
+		};
+		led_1: led_1 {
+			gpios = <&gpiog 2 GPIO_ACTIVE_HIGH>;
+			label = "LED1";
+		};
+		led_2: led_2 {
+			gpios = <&gpiog 3 GPIO_ACTIVE_HIGH>;
+			label = "LED2";
+		};
+		led_3: led_3 {
+			gpios = <&gpiog 4 GPIO_ACTIVE_HIGH>;
+			label = "LED3";
+		};
+		led_4: led_4 {
+			gpios = <&gpiog 5 GPIO_ACTIVE_HIGH>;
+			label = "LED4";
+		};
+		led_5: led_5 {
+			gpios = <&gpiog 6 GPIO_ACTIVE_HIGH>;
+			label = "LED5";
+		};
+		led_6: led_6 {
+			gpios = <&gpiog 7 GPIO_ACTIVE_HIGH>;
+			label = "LED6";
+		};
+		led_7: led_7 {
+			gpios = <&gpiog 8 GPIO_ACTIVE_HIGH>;
+			label = "LED7";
+		};
+		led_0_green: led_0_green {
+			gpios = <&gpiof 14 GPIO_ACTIVE_HIGH>;
+			label = "LED0 Green";
+		};
+		led_1_red: led_1_red {
+			gpios = <&gpioe 11 GPIO_ACTIVE_HIGH>;
+			label = "LED1 Red";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		user_button: button_0 {
+			gpios = <&gpiob 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "User Button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+	canbus {
+		canbus1: canbus1 {
+				compatible = "vnd,canbus";
+				status = "okay";
+				can_device = <&can1>;
+		};
+		canbus2: canbus2 {
+				compatible = "vnd,canbus";
+				status = "okay";
+				can_device = <&can2>;
+		};
+	};
+    
+};
+
+&clk_lsi {
+	status = "okay";
+};
+
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(25)>;
+	status = "okay";
+};
+
+&pll {
+	div-m = <15>;
+	mul-n = <216>;
+	div-p = <2>;
+	div-q = <4>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(180)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <4>;
+	apb2-prescaler = <2>;
+};
+
+&rtc {
+	clocks = <&rcc STM32_CLOCK_BUS_APB1 0x10000000>,
+			<&rcc STM32_SRC_LSI RTC_SEL(2)>;
+	status = "okay";
+};
+
+&rng {
+	status = "okay";
+};
+
+&iwdg {
+	status = "okay";
+};
+
+&usart1 {
+    pinctrl-0 = <&usart1_tx_pb6 &usart1_rx_pb7>;
+    pinctrl-names = "default";
+    current-speed = <100000>;
+    status = "okay";
+    data-bits = <8>;
+    stop-bits = "2";
+    parity = "even";
+    dmas = <&dma1 1 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
+		   <&dma1 3 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
+    dma-names = "rx", "tx";
+};
+
+&dma1 {
+    status = "okay";
+};
+&usart3 {
+	pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+	
+};
+
+&usart6 {
+	pinctrl-0 = <&usart6_tx_pg14 &usart6_rx_pg9>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+	data-bits = <8>;
+	stop-bits = "1";
+};
+&uart8 {
+	pinctrl-0 = <&uart8_tx_pe1 &uart8_rx_pe0>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+	
+};
+&uart7 {
+	pinctrl-0 = <&uart7_tx_pe8 &uart7_rx_pe7>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+	
+};
+
+zephyr_udc0: &usbotg_fs {
+	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&can1 {
+	status = "okay";
+	pinctrl-0 = <&can1_rx_pd0 &can1_tx_pd1>;
+	pinctrl-names = "default";
+	bitrate = <1000000>;
+};
+
+&can2 {
+	pinctrl-0 = <&can2_rx_pb12 &can2_tx_pb13>;
+	pinctrl-names = "default";
+	bitrate = <1000000>;
+	status = "okay";
+};
+
+&timers1 {
+	status = "okay";
+	st,prescaler = <10000>;
+//st,countermode = <1>;
+	pwm1: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim1_ch1_pa8>;
+		pinctrl-names = "default";
+	};
+	pwm2: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim1_ch2_pa9>;
+		pinctrl-names = "default";
+	};
+	pwm3: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim1_ch3_pe13>;
+		pinctrl-names = "default";
+	};
+	pwm4: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim1_ch4_pe14>;
+		pinctrl-names = "default";
+	};
+};
+&timers2 {
+	status = "okay";
+	st,prescaler = <10000>;
+
+	pwm_Z: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch1_pa0>;
+		pinctrl-names = "default";
+	};
+	pwm_Y: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch2_pa1>;
+		pinctrl-names = "default";
+	};
+	pwm_X: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch3_pa2>;
+		pinctrl-names = "default";
+	};
+	pwm_W: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim2_ch4_pa3>;
+		pinctrl-names = "default";
+	};
+};
+&timers4 {
+	status = "okay";
+	st,prescaler = <10000>;
+
+	pwm_A: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim4_ch1_pd12>;
+		pinctrl-names = "default";
+	};
+	pwm_B: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim4_ch2_pd13>;
+		pinctrl-names = "default";
+	};
+	pwm_C: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim4_ch3_pd14>;
+		pinctrl-names = "default";
+	};
+	pwm_D: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim4_ch4_pd15>;
+		pinctrl-names = "default";
+	};
+};
+
+&timers5 {
+	status = "okay";
+	st,prescaler = <10000>;
+
+	pwm_E: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim5_ch1_ph10>;
+		pinctrl-names = "default";
+	};
+	pwm_F: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim5_ch2_ph11>;
+		pinctrl-names = "default";
+	};
+	pwm_G: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim5_ch3_ph12>;
+		pinctrl-names = "default";
+	};
+	pwm_H: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim5_ch4_pi0>;
+		pinctrl-names = "default";
+	};
+};
+
+&timers8 {
+	status = "okay";
+	st,prescaler = <10000>;
+
+	pwm_V: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim8_ch1_pi5>;
+		pinctrl-names = "default";
+	};
+	pwm_U: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim8_ch2_pi6>;
+		pinctrl-names = "default";
+	};
+	pwm_T: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim8_ch3_pi7>;
+		pinctrl-names = "default";
+	};
+	pwm_S: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim8_ch4_pi2>;
+		pinctrl-names = "default";
+	};
+};
+// &adc1 {
+// 	pinctrl-0 = <&adc_in4_pf6>;
+// 	pinctrl-names = "default";
+// 	st,adc-clock-source = <SYNC>;
+// 	st,adc-prescaler = <4>;
+// 	status = "okay";
+// };
+
+// &spi5 {
+// 	status = "okay";
+// 	pinctrl-0=<&spi5_mosi_pf9
+// 			&spi5_miso_pf8
+// 			&spi5_sck_pf7
+// 			&spi5_nss_pf6>;
+// 	pinctrl-names="default";
+// 	mpu6600@0 {
+//         compatible = "invensense,mpu6600";
+// 		reg = <0>;                     
+//         spi-max-frequency = <1000000>; 
+//         interrupt-parent = <&gpiof>;  
+		
+//         interrupts = <8 GPIO_ACTIVE_HIGH>; 
+//         label = "MPU6500";             
+//         int-gpios = <&gpiof 8 GPIO_ACTIVE_HIGH>; 
+//     };
+// };
+
+
+
