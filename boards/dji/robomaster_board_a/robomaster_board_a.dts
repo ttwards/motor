@@ -33,6 +33,7 @@
 		led9 = &led_1_red;
 
 		watchdog0 = &iwdg;
+		
 	};
 
 	leds {
@@ -99,7 +100,26 @@
 				can_device = <&can2>;
 		};
 	};
-    
+    powerctrl {
+		compatible = "gpio-leds";
+		status = "okay";
+		power1: power1 {
+			gpios = <&gpioh 1 GPIO_ACTIVE_HIGH>;
+			label = "XT30_1";
+		};
+		power2: power2 {
+			gpios = <&gpioh 2 GPIO_ACTIVE_HIGH>;
+			label = "XT30_2";
+		};
+		power3: power3 {
+			gpios = <&gpioh 3 GPIO_ACTIVE_HIGH>;
+			label = "XT30_3";
+		};
+		power4: power4 {
+			gpios = <&gpioh 4 GPIO_ACTIVE_HIGH>;
+			label = "XT30_4";
+		};
+	};
 };
 
 &clk_lsi {
@@ -107,13 +127,13 @@
 };
 
 &clk_hse {
-	clock-frequency = <DT_FREQ_M(25)>;
+	clock-frequency = <DT_FREQ_M(12)>;
 	status = "okay";
 };
 
 &pll {
-	div-m = <15>;
-	mul-n = <216>;
+	div-m = <6>;
+	mul-n = <180>;
 	div-p = <2>;
 	div-q = <4>;
 	clocks = <&clk_hse>;
@@ -150,11 +170,14 @@
     data-bits = <8>;
     stop-bits = "2";
     parity = "even";
-    dmas = <&dma1 1 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
-		   <&dma1 3 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
-    dma-names = "rx", "tx";
+    dmas = <&dma2 2 5 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
+		   <&dma2 7 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
+    //<&dmax stream channel flags>
+		   dma-names = "rx", "tx";
 };
-
+&dma2 {
+	status = "okay";
+};
 &dma1 {
     status = "okay";
 };
@@ -173,6 +196,7 @@
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";
+	// parity = "even";
 };
 &uart8 {
 	pinctrl-0 = <&uart8_tx_pe1 &uart8_rx_pe0>;
@@ -208,160 +232,134 @@ zephyr_udc0: &usbotg_fs {
 	bitrate = <1000000>;
 	status = "okay";
 };
-
+//左上左下右下右上
 &timers1 {
 	status = "okay";
 	st,prescaler = <10000>;
-//st,countermode = <1>;
+	//st,countermode = <1>;
+	// four-channel-capture-support=true;
 	pwm1: pwm {
 		status = "okay";
-		pinctrl-0 = <&tim1_ch1_pa8>;
+		pinctrl-0 = <&tim1_ch1_pa8
+					&tim1_ch2_pa9
+					&tim1_ch3_pe13
+					&tim1_ch4_pe14>;
 		pinctrl-names = "default";
-	};
-	pwm2: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim1_ch2_pa9>;
-		pinctrl-names = "default";
-	};
-	pwm3: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim1_ch3_pe13>;
-		pinctrl-names = "default";
-	};
-	pwm4: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim1_ch4_pe14>;
-		pinctrl-names = "default";
+		
 	};
 };
+//zyxw
 &timers2 {
 	status = "okay";
 	st,prescaler = <10000>;
 
-	pwm_Z: pwm {
+	pwm2: pwm {
 		status = "okay";
-		pinctrl-0 = <&tim2_ch1_pa0>;
-		pinctrl-names = "default";
-	};
-	pwm_Y: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim2_ch2_pa1>;
-		pinctrl-names = "default";
-	};
-	pwm_X: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim2_ch3_pa2>;
-		pinctrl-names = "default";
-	};
-	pwm_W: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim2_ch4_pa3>;
+		pinctrl-0 = <&tim2_ch1_pa0
+					&tim2_ch2_pa1
+					&tim2_ch3_pa2
+					&tim2_ch4_pa3>;
 		pinctrl-names = "default";
 	};
 };
+//abcd
 &timers4 {
 	status = "okay";
 	st,prescaler = <10000>;
 
-	pwm_A: pwm {
+	pwm4: pwm {
 		status = "okay";
-		pinctrl-0 = <&tim4_ch1_pd12>;
-		pinctrl-names = "default";
-	};
-	pwm_B: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim4_ch2_pd13>;
-		pinctrl-names = "default";
-	};
-	pwm_C: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim4_ch3_pd14>;
-		pinctrl-names = "default";
-	};
-	pwm_D: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim4_ch4_pd15>;
+		pinctrl-0 = <&tim4_ch1_pd12
+					&tim4_ch2_pd13
+					&tim4_ch3_pd14
+					&tim4_ch4_pd15>;
 		pinctrl-names = "default";
 	};
 };
-
+//efgh
 &timers5 {
 	status = "okay";
 	st,prescaler = <10000>;
 
-	pwm_E: pwm {
+	pwm5: pwm {
 		status = "okay";
-		pinctrl-0 = <&tim5_ch1_ph10>;
-		pinctrl-names = "default";
-	};
-	pwm_F: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim5_ch2_ph11>;
-		pinctrl-names = "default";
-	};
-	pwm_G: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim5_ch3_ph12>;
-		pinctrl-names = "default";
-	};
-	pwm_H: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim5_ch4_pi0>;
+		pinctrl-0 = <&tim5_ch1_ph10
+					&tim5_ch2_ph11
+					&tim5_ch3_ph12
+					&tim5_ch4_pi0>;
 		pinctrl-names = "default";
 	};
 };
-
+//vuts
 &timers8 {
 	status = "okay";
 	st,prescaler = <10000>;
 
-	pwm_V: pwm {
+	pwm8: pwm {
 		status = "okay";
-		pinctrl-0 = <&tim8_ch1_pi5>;
-		pinctrl-names = "default";
-	};
-	pwm_U: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim8_ch2_pi6>;
-		pinctrl-names = "default";
-	};
-	pwm_T: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim8_ch3_pi7>;
-		pinctrl-names = "default";
-	};
-	pwm_S: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim8_ch4_pi2>;
+		pinctrl-0 = <&tim8_ch1_pi5
+					&tim8_ch2_pi6
+					&tim8_ch3_pi7
+					&tim8_ch4_pi2>;
 		pinctrl-names = "default";
 	};
 };
-// &adc1 {
-// 	pinctrl-0 = <&adc_in4_pf6>;
-// 	pinctrl-names = "default";
-// 	st,adc-clock-source = <SYNC>;
-// 	st,adc-prescaler = <4>;
-// 	status = "okay";
-// };
+&adc1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	st,adc-prescaler = <4>;
+	status = "okay";
+	
+	// vref-mv
+	// num-sampling-time-common-channels
+	channel@8 {
+        reg = <8>;              // 通道8,最多15,l2m2n2o2l1m1n1o1
+        zephyr,gain = "ADC_GAIN_1";           // 增益1倍
+        zephyr,reference = "ADC_REF_INTERNAL"; // 内部参考
+        zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>; // 采样时间10us
+        zephyr,resolution = <12>;     // 12位分辨率
+		// zephyr,differential
+		// zephyr,input-positive
+		// zephyr,input-negative
+		// zephyr,oversampling
+		// zephyr,current-source-pin
+		// zephyr,vbias-pins
+	};
+};
+&dac1{
+	status = "okay";//out1out2-p2p1 exit9-q2
+};
+&i2c2 {
+	status = "okay";
+	pinctrl-0 = <&i2c2_sda_pf0 &i2c2_scl_pf1>;//i2 i1
+	pinctrl-names = "default";
+	//clock-frequency = <>;
+	//scl-gpio
+	//sda-gpio
+	//sq-size
+	//cq-size
+};
+//k1j1k2j2
+&spi4 {
+	status = "okay";
+	pinctrl-0=<&spi4_mosi_pe6
+			&spi4_miso_pe5
+			&spi4_sck_pe12
+			&spi4_nss_pe4>;
+	pinctrl-names="default";
+	
+};
 
-// &spi5 {
-// 	status = "okay";
-// 	pinctrl-0=<&spi5_mosi_pf9
-// 			&spi5_miso_pf8
-// 			&spi5_sck_pf7
-// 			&spi5_nss_pf6>;
-// 	pinctrl-names="default";
-// 	mpu6600@0 {
-//         compatible = "invensense,mpu6600";
-// 		reg = <0>;                     
-//         spi-max-frequency = <1000000>; 
-//         interrupt-parent = <&gpiof>;  
-		
-//         interrupts = <8 GPIO_ACTIVE_HIGH>; 
-//         label = "MPU6500";             
-//         int-gpios = <&gpiof 8 GPIO_ACTIVE_HIGH>; 
-//     };
-// };
+&spi5 {
+	status = "okay";
+	pinctrl-0=<&spi5_mosi_pf9
+			&spi5_miso_pf8
+			&spi5_sck_pf7
+			&spi5_nss_pf6>;
+	pinctrl-names="default";
+	// mpu6600@0 
+};
+
 
 
 
