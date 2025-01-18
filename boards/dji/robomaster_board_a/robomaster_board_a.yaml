@@ -1,0 +1,21 @@
+identifier: robomaster_board_a
+name: DJI Robomaster Development Board A
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+ram: 256
+flash: 2048
+supported:
+  - counter
+  - gpio
+  - watchdog
+  - can
+testing:
+  ignore_tags:
+    - net
+    - shell
+    - console
+vendor: dji
