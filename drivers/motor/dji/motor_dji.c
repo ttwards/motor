@@ -36,6 +36,7 @@ const struct device *can_devices[] = {
 		.flags = 0,                                                                        \
 		.full = {{false}},                                                                 \
 		.mask = 0,                                                                         \
+		.thread_sem = &dji_thread_sem,                                                     \
 	}
 
 static int frames_id(int tx_id)
@@ -342,7 +343,7 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	// Suppose it is 3508/2006
 	uint8_t id = (rx_frame.id & 0xF) - 1;
 	// If RX_ID does not match, it should be GM6020
-	if (ctrl_struct->rx_ids[id] != rx_frame.id && id > 4) {
+	if (ctrl_struct->rx_ids[id] != rx_frame.id && id >= 4) {
 		id -= 4;
 	}
 	// It should match, but in case we check again
@@ -397,7 +398,7 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	}
 
 	if (full) {
-		k_sem_give(&ctrl_struct->thread_sem);
+		k_sem_give(ctrl_struct->thread_sem);
 	}
 	// k_thread_resume(dji_motor_ctrl_thread);
 	k_spin_unlock(&motor_data->data_input_lock, key);
@@ -405,7 +406,6 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 }
 
 static const struct can_filter filter20x = {.id = 0x200, .mask = 0x3F0, .flags = 0};
-static const struct can_filter test = {.id = 0x1, .mask = 0x3FF, .flags = 0};
 
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
 {
@@ -550,24 +550,22 @@ static void motor_calc(const struct device *dev)
 
 struct can_frame txframe;
 
+static struct k_sem dji_thread_sem;
+
 static void can_send_entry(void *arg1, void *arg2, void *arg3)
 {
 	ARG_UNUSED(arg1);
 	ARG_UNUSED(arg2);
 	ARG_UNUSED(arg3);
-	k_sem_init(&(ctrl_structs[0].thread_sem), 0, 2);
+	k_sem_init(&dji_thread_sem, 0, 2);
 	struct device *can_dev = NULL;
 	for (int i = 0; i < CAN_COUNT; i++) {
 		k_sem_init(&tx_queue_sem[i], 3, 3); // 初始化信号量
 
 		can_dev = (struct device *)ctrl_structs[i].can_dev;
 		can_start(can_dev);
-		if (i != 0) {
-			ctrl_structs[i].thread_sem = ctrl_structs[0].thread_sem;
-		}
-		int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &test);
-		err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &test);
-		err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &filter20x);
+
+		int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &filter20x);
 
 		if (err < 0) {
 			LOG_ERR("Error adding CAN filter (err %d)", err);
@@ -619,7 +617,7 @@ static void can_send_entry(void *arg1, void *arg2, void *arg3)
 				}
 			}
 		}
-		k_sem_take(&(ctrl_structs[0].thread_sem), K_MSEC(1));
+		k_sem_take(&dji_thread_sem, K_MSEC(1));
 
 		int curr_time = k_cycle_get_32();
 		for (int i = 0; i < 2; i++) {

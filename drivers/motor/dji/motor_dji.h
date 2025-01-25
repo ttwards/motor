@@ -30,6 +30,8 @@ typedef uint16_t allmotor_id_t;
 	find the rpm in motor_cans->target_rpm[canbus_id] */
 typedef uint16_t motor_id_t;
 
+static struct k_sem dji_thread_sem;
+
 struct motor_controller {
 	const struct device *can_dev;
 
@@ -46,7 +48,7 @@ struct motor_controller {
 	uint8_t flags;
 	uint8_t mask[5];
 	struct device *motor_devs[8];
-	struct k_sem thread_sem;
+	struct k_sem *thread_sem;
 };
 
 struct dji_motor_data {

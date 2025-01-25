@@ -32,19 +32,6 @@ static bool float_equal(float a, float b)
 	return fabsf(a - b) < 0.0001f;
 }
 
-struct pid_mit_data {
-	float *ref;
-	float *detri_ref;
-	float *curr;
-	float *detri_curr;
-	float err_integral;
-	float err_derivate;
-	float ratio;
-	int32_t *curr_time;
-	int32_t *prev_time;
-	float *output;
-};
-
 struct pid_mit_config {
 	const struct pid_single_config common;
 };

@@ -6,13 +6,13 @@
 #ifndef PID_H
 #define PID_H
 
-#include "zephyr/toolchain.h"
-#include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 
 // TODO: PID, ADRC, FSF, LQR, MPC, etc.
 
@@ -20,127 +20,141 @@
 extern "C" {
 #endif
 
-#define PID_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \
-    DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
+#define PID_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)            \
+	DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
 
 #define NORMAL_PID 0U
 #define MIT_PID    1U
 
-struct pid_single_config {
-    float k_p;
-    float k_i;
-    float k_d;
+#define PID_NEW_INSTANCE(node_id, name, ref, curr, curr_time, prev_time, output)                   \
+	struct pid_single_data DT_NODE_FULL_NAME_UNQUOTED(node_id)##name = {.ref = ref,.curr=curr, .pid_dev =DEVICE_DT_GET\
+	\	
+	}
+
+struct pid_config {
+	float k_p;
+	float k_i;
+	float k_d;
+	bool mit;
 };
 
 struct pid_single_data {
-    float   *ref;
-    float   *curr;
-    float    err_integral;
-    float    err_derivate;
-    float    ratio;
-    int32_t *curr_time;
-    int32_t *prev_time;
-    float   *output;
+	float *ref;
+	float *curr;
+	float err_integral;
+	float err_derivate;
+	float ratio;
+	struct device *pid_dev;
+	int32_t *curr_time;
+	int32_t *prev_time;
+	float *output;
 };
 
-/**
- * @typedef motor_get_status()
- * @brief Callback API returning motor status
- *
- * @see get_status() for argument descriptions.
- */
-typedef void (*pid_api_calc_t)(const struct device *dev);
-
-// typedef int32_t (*pid_api_addr_t)(const struct device *dev);
-
-typedef void (*pid_api_reg_input_t)(const struct device *dev, float *curr, float *ref);
-
-typedef void (*pid_api_det_input_t)(const struct device *dev, float *curr, float *ref);
-
-typedef const struct pid_single_config *(*pid_get_params_t)(const struct device *dev);
-
-typedef void (*pid_api_reg_time_t)(const struct device *dev, uint32_t *curr_time,
-                                   uint32_t *prev_time);
-
-typedef void (*pid_api_reg_output_t)(const struct device *dev, float *output);
-
-/**
- * @brief Servo Motor driver API
- */
-__subsystem struct pid_driver_api {
-    pid_api_calc_t       pid_calc;
-    pid_api_reg_input_t  pid_reg_input;
-    pid_api_det_input_t  pid_reg_detri;
-    pid_api_reg_time_t   pid_reg_time;
-    pid_api_reg_output_t pid_reg_output;
-    pid_get_params_t     pid_get_params;
+struct pid_mit_data {
+	float *ref;
+	float *detri_ref;
+	float *curr;
+	float *detri_curr;
+	float err_integral;
+	float err_derivate;
+	float ratio;
+	int32_t *curr_time;
+	int32_t *prev_time;
+	float *output;
 };
 
-__syscall void pid_calc(const struct device *dev);
-
-static inline void z_impl_pid_calc(const struct device *dev) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
-
-    if (api->pid_calc != NULL) {
-        api->pid_calc(dev);
-    }
-}
-__syscall void pid_reg_input(const struct device *dev, float *curr, float *ref);
-
-static inline void z_impl_pid_reg_input(const struct device *dev, float *curr, float *ref) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
-
-    if (api->pid_reg_input != NULL) {
-        api->pid_reg_input(dev, curr, ref);
-    }
+static bool float_equal(float a, float b)
+{
+	return fabsf(a - b) < 0.0001f;
 }
 
-__syscall void pid_reg_det_input(const struct device *dev, float *curr, float *ref);
+static void pid_calc(const struct device *dev, void *data)
+{
+	if (dev == NULL) {
+		return;
+	}
+	const struct pid_config *pid_para = dev->config;
+	if (!pid_para->mit) {
+		struct pid_single_data *pid_data = data;
+		if (pid_data->curr == NULL) {
+			return;
+		}
+		float kp = pid_para->k_p;
+		float ki = pid_para->k_i;
+		float kd = pid_para->k_d;
+		float err = *(pid_data->ref) - *(pid_data->curr);
+		float deltaT = k_cyc_to_us_near32(*(pid_data->curr_time) - *(pid_data->prev_time));
+		if (!float_equal(ki, 0)) {
+			pid_data->err_integral += (err * deltaT) / (1000000 * ki);
+		}
+		if (!float_equal(kd, 0)) {
+			pid_data->err_derivate = kd * err / deltaT;
+		}
+		//   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
+		//           to16t(kd * 1000000 * err / deltaT));
+		*(pid_data->output) = kp * (err + pid_data->err_integral + pid_data->err_derivate);
 
-static inline void z_impl_pid_reg_det_input(const struct device *dev, float *curr, float *ref) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
+	} else {
+		struct pid_mit_data *pid_data = data;
+		if (pid_data->curr == NULL) {
+			return;
+		}
+		float kp = pid_para->k_p;
+		float ki = pid_para->k_i;
+		float kd = pid_para->k_d;
+		float err = *(pid_data->ref) - *(pid_data->curr);
+		float deltaT = k_cyc_to_us_near32(*(pid_data->curr_time) - *(pid_data->prev_time));
+		if (!float_equal(ki, 0)) {
+			pid_data->err_integral += (err * deltaT) / (1000000 * ki);
+		}
+		if (!float_equal(kd, 0)) {
+			pid_data->err_derivate =
+				kd * (*(pid_data->detri_ref) - *(pid_data->detri_curr)) / deltaT;
+		}
 
-    if (api->pid_reg_detri != NULL) {
-        api->pid_reg_detri(dev, curr, ref);
-    }
+		*(pid_data->output) = kp * (err + pid_data->err_integral + pid_data->err_derivate);
+		return;
+	}
 }
 
-__syscall void pid_reg_time(const struct device *dev, uint32_t *curr_time, uint32_t *prev_time);
-
-static inline void z_impl_pid_reg_time(const struct device *dev, uint32_t *curr_time,
-                                       uint32_t *prev_time) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
-
-    if (api->pid_reg_time != NULL) {
-        api->pid_reg_time(dev, curr_time, prev_time);
-    }
+static void pid_register(struct pid_single_data *data, float *curr, float *ref, uint32_t *curr_cyc,
+			 uint32_t *prev_cyc, float *output)
+{
+	if (data == NULL) {
+		return;
+	}
+	data->curr = curr;
+	data->ref = ref;
+	data->curr_time = curr_cyc;
+	data->prev_time = prev_cyc;
+	data->output = output;
 }
 
-__syscall void pid_reg_output(const struct device *dev, float *output);
-
-static inline void z_impl_pid_reg_output(const struct device *dev, float *output) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
-
-    if (api->pid_reg_output != NULL) {
-        api->pid_reg_output(dev, output);
-    }
+static void mit_register(struct pid_mit_data *data, float *curr, float *ref, float *detri_curr,
+			 float *detri_ref, uint32_t *curr_cyc, uint32_t *prev_cyc, float *output)
+{
+	if (data == NULL) {
+		return;
+	}
+	data->curr = curr;
+	data->ref = ref;
+	data->detri_curr = detri_curr;
+	data->detri_ref = detri_ref;
+	data->curr_time = curr_cyc;
+	data->prev_time = prev_cyc;
+	data->output = output;
 }
 
-__syscall const struct pid_single_config *pid_get_params(const struct device *dev);
-
-static inline const struct pid_single_config *z_impl_pid_get_params(const struct device *dev) {
-    const struct pid_driver_api *api = (const struct pid_driver_api *)dev->api;
-
-    if (api->pid_get_params != NULL) {
-        return api->pid_get_params(dev);
-    }
-    return NULL;
+static const struct pid_single_config *pid_get_params(const struct device *dev)
+{
+	if (dev == NULL) {
+		return NULL;
+	}
+	return dev->config;
 }
 
 #ifdef __cplusplus
 }
 #endif
-
-#include <zephyr/syscalls/pid.h>
 
 #endif // PID_H
