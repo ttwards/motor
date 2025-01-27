@@ -33,6 +33,37 @@ void pwr_init(void)
 
 #endif /* CONFIG_BOARD_DM_MC02 */
 
+#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_A
+
+#define XT30_1_NODE DT_NODELABEL(power1)
+#define XT30_2_NODE DT_NODELABEL(power2)
+#define XT30_3_NODE DT_NODELABEL(power3)
+#define XT30_4_NODE DT_NODELABEL(power4)
+
+static const struct gpio_dt_spec pwr1 = GPIO_DT_SPEC_GET(XT30_1_NODE, gpios);
+static const struct gpio_dt_spec pwr2 = GPIO_DT_SPEC_GET(XT30_2_NODE, gpios);
+static const struct gpio_dt_spec pwr3 = GPIO_DT_SPEC_GET(XT30_3_NODE, gpios);
+static const struct gpio_dt_spec pwr4 = GPIO_DT_SPEC_GET(XT30_4_NODE, gpios);
+
+void pwr_init(void)
+{
+	gpio_pin_configure_dt(&pwr1, GPIO_OUTPUT_HIGH);
+	gpio_pin_configure_dt(&pwr2, GPIO_OUTPUT_HIGH);
+	gpio_pin_configure_dt(&pwr3, GPIO_OUTPUT_HIGH);
+	gpio_pin_configure_dt(&pwr4, GPIO_OUTPUT_HIGH);
+}
+
+// #define LED_GREEN DT_ALIAS(led8)
+// #define LED_RED DT_ALIAS(led9)
+
+// const struct device *led_green = DEVICE_DT_GET(LED_GREEN);
+// const struct device *led_red = DEVICE_DT_GET(LED_RED);
+
+#define PWR_INIT pwr_init();
+#define LED_INIT
+
+#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_A */
+
 #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
 
 // #define LED_BLUE  DT_ALIAS(led0)
@@ -55,6 +86,11 @@ void led_set_rgb(struct led_rgb *color)
 #ifdef CONFIG_BOARD_DM_MC02
 	led_strip_update_rgb(strip, color, 2);
 #endif /* CONFIG_BOARD_DM_MC02 */
+
+#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_A
+	// led_set_brightness(led_green, 1, color->g);
+	// led_set_brightness(led_red, 1, color->r);
+#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_A */
 
 #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
 	// led_set_brightness(led_blue, 1, color->b);
