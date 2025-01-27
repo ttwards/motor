@@ -292,13 +292,13 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 		break;
 	}
 
-	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.controller); i++) {
-		if (cfg->common.controller[i] == NULL) {
+	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
+		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
 			break;
 		}
 		if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
-			const struct pid_single_config *params =
-				pid_get_params(cfg->common.controller[i]);
+			const struct pid_config *params =
+				pid_get_params(cfg->common.pid_datas[i]);
 
 			data->common.mode = mode;
 			data->params.k_p = params->k_p;

@@ -62,7 +62,7 @@ struct dm_motor_data {
 	int16_t RAWrpm;
 	int16_t RAWtorque;
 
-	struct pid_single_config params;
+	struct pid_config params;
 };
 
 struct dm_motor_config {
@@ -157,10 +157,10 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 #define DMMOTOR_CONFIG_INST(inst)                                                                  \
 	static const struct dm_motor_config dm_motor_cfg_##inst = {                                \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (float)DT_PROP(DT_DRV_INST(inst), gear_ratio) / 100.0f,              \
-		.v_max = (float)DT_PROP(DT_DRV_INST(inst), v_max) / 10.0f,                         \
-		.p_max = (float)DT_PROP(DT_DRV_INST(inst), p_max) / 10.0f,                         \
-		.t_max = (float)DT_PROP(DT_DRV_INST(inst), t_max) / 10.0f,                         \
+		.gear_ratio = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),              \
+		.v_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), v_max),                         \
+		.p_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), p_max),                         \
+		.t_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), t_max),                         \
 	};
 
 #define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \

@@ -21,6 +21,7 @@
  * @{
  */
 
+#include "zephyr/drivers/pid.h"
 #include "zephyr/toolchain.h"
 #include <sys/_intsup.h>
 #include <zephyr/kernel.h>
@@ -73,10 +74,9 @@ struct motor_driver_config {
 	int tx_id;
 	/** CAN RX ID */
 	int rx_id;
-	/** Gear Ratio */
-	const struct device *controller[4];
 	/** Motor capabilities */
 	char capabilities[4][12];
+	struct pid_data *pid_datas[4];
 };
 
 struct motor_driver_data {
@@ -373,31 +373,33 @@ static inline void z_impl_motor_limit_torque(const struct device *dev, float max
 
 #define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
 
-#define GET_CONTROLLER_STRUCT(node_id, prop, idx) DEVICE_DT_GET(DT_PROP_BY_IDX(node_id, prop, idx))
+#define NEW_PID_INSTANCE_STRUCT(node_id, prop, idx)                                                \
+	PID_NEW_INSTANCE(DT_PROP_BY_IDX(node_id, prop, idx), DT_NODE_FULL_NAME_UNQUOTED(node_id))
+
+#define GET_PID_INSTANCE_PTR(node_id, prop, idx)                                                   \
+	&PID_INS_NAME(DT_PROP_BY_IDX(node_id, prop, idx), DT_NODE_FULL_NAME_UNQUOTED(node_id))
+
+#define MOTOR_DT_DRIVER_PID_DEFINE(node_id)                                                        \
+	DT_FOREACH_PROP_ELEM(node_id, controllers, NEW_PID_INSTANCE_STRUCT)
 
 #define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                                        \
 	{                                                                                          \
-		.phy = (const struct device *)DT_GET_CANPHY(node_id),                              \
-		.id = DT_PROP(node_id, id),                                                        \
-		.tx_id = DT_PROP(node_id, tx_id),                                                  \
-		.rx_id = DT_PROP(node_id, rx_id),                                                  \
+		.phy = (const struct device *)DT_GET_CANPHY(node_id), .id = DT_PROP(node_id, id),  \
+		.tx_id = DT_PROP(node_id, tx_id), .rx_id = DT_PROP(node_id, rx_id),                \
 		.capabilities = DT_PROP(node_id, capabilities),                                    \
-		.controller = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_CONTROLLER_STRUCT,   \
-                                                  (, ))},                                     \
-		}
-
-#define MOTOR_DT_DRIVER_DATA_INST_GET(inst)                                                        \
-	{                                                                                          \
-		.angle = 0,                                                                        \
-		.rpm = 0,                                                                          \
-		.torque = 0,                                                                       \
-		.temperature = 0,                                                                  \
-		.round_cnt = 0,                                                                    \
-		.speed_limit = {-99999, 99999},                                                    \
-		.torque_limit = {-99999, 99999},                                                   \
-		.mode = MIT,                                                                       \
+		.pid_datas = {                                                                     \
+			DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_PID_INSTANCE_PTR,   \
+                                                  (, ))},   \
 	}
+
+#define MOTOR_DT_DRIVER_DATA_GET(node_id)                                                          \
+	{                                                                                          \
+		.angle = 0, .rpm = 0, .torque = 0, .temperature = 0, .round_cnt = 0,               \
+		.speed_limit = {-99999, 99999}, .torque_limit = {-99999, 99999}, .mode = MIT,      \
+	}
+
 #define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
+#define MOTOR_DT_DRIVER_DATA_INST_GET(inst)   MOTOR_DT_DRIVER_DATA_GET(DT_DRV_INST(inst))
 /**
  * @}
  */

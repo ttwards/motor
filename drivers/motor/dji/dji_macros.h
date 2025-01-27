@@ -87,6 +87,7 @@
 				    CONFIG_MOTOR_INIT_PRIORITY, &motor_api_funcs);
 
 #define DMOTOR_INST(inst)                                                                          \
+	MOTOR_DT_DRIVER_PID_DEFINE(DT_DRV_INST(inst))                                              \
 	DMOTOR_CONFIG_INST(inst)                                                                   \
 	DMOTOR_DATA_INST(inst)                                                                     \
 	DMOTOR_DEFINE_INST(inst)

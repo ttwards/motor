@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include "dji_ratios.h"
 #include "dji_macros.h"
+#include "zephyr/kernel.h"
 #include "zephyr/spinlock.h"
 #include <zephyr/device.h>
 #include <zephyr/drivers/can.h>
@@ -31,6 +32,7 @@ typedef uint16_t allmotor_id_t;
 typedef uint16_t motor_id_t;
 
 static struct k_sem dji_thread_sem;
+struct k_work_q dji_work_queue;
 
 struct motor_controller {
 	const struct device *can_dev;
@@ -48,7 +50,10 @@ struct motor_controller {
 	uint8_t flags;
 	uint8_t mask[5];
 	struct device *motor_devs[8];
-	struct k_sem *thread_sem;
+
+	struct k_work full_handle;
+
+	struct k_sem tx_queue_sem;
 };
 
 struct dji_motor_data {
@@ -101,8 +106,6 @@ struct dji_motor_config {
 // 全局变量声明
 extern struct motor_controller ctrl_structs[];
 
-struct k_sem tx_queue_sem[CAN_COUNT];
-
 // 函数声明
 void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
 
@@ -117,6 +120,20 @@ float dji_get_speed(const struct device *dev);
 float dji_get_torque(const struct device *dev);
 int dji_init(const struct device *dev);
 void dji_control(const struct device *dev, enum motor_cmd cmd);
+
+void dji_tx_handler(struct k_work *work);
+void dji_miss_handler(struct k_work *work);
+
+void dji_miss_isr_handler(struct k_timer *dummy);
+
+void dji_init_handler(struct k_work *work);
+
+K_THREAD_STACK_DEFINE(dm_work_queue_stack, CAN_SEND_STACK_SIZE);
+
+K_WORK_DEFINE(dji_miss_handle, dji_miss_handler);
+K_WORK_DEFINE(dji_init_handle, dji_init_handler);
+
+K_TIMER_DEFINE(dji_miss_handle_timer, dji_miss_isr_handler, NULL);
 
 static const struct motor_driver_api motor_api_funcs = {
 	.motor_get_speed = dji_get_speed,
