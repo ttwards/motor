@@ -157,10 +157,10 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 #define DMMOTOR_CONFIG_INST(inst)                                                                  \
 	static const struct dm_motor_config dm_motor_cfg_##inst = {                                \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),              \
-		.v_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), v_max),                         \
-		.p_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), p_max),                         \
-		.t_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), t_max),                         \
+		.gear_ratio = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),            \
+		.v_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), v_max),                      \
+		.p_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), p_max),                      \
+		.t_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), t_max),                      \
 	};
 
 #define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \
@@ -175,6 +175,7 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 				    &motor_api_funcs);
 
 #define DMMOTOR_INST(inst)                                                                         \
+	MOTOR_DT_DRIVER_PID_DEFINE(DT_DRV_INST(inst))                                              \
 	DMMOTOR_CONFIG_INST(inst)                                                                  \
 	DMMOTOR_DATA_INST(inst)                                                                    \
 	DMMOTOR_DEFINE_INST(inst)

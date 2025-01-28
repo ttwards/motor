@@ -297,8 +297,7 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 			break;
 		}
 		if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
-			const struct pid_config *params =
-				pid_get_params(cfg->common.pid_datas[i]);
+			const struct pid_config *params = pid_get_params(cfg->common.pid_datas[i]);
 
 			data->common.mode = mode;
 			data->params.k_p = params->k_p;
@@ -395,7 +394,7 @@ void dm_rx_data_handler(struct k_work *work)
 
 		float prev_angle = data->common.angle;
 		data->common.angle =
-			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16))*RAD2DEG;
+			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16)) * RAD2DEG;
 		data->common.rpm = uint_to_float(data->RAWrpm, -cfg->v_max, cfg->v_max, 12);
 		data->common.torque = uint_to_float(data->RAWtorque, -cfg->t_max, cfg->t_max, 12);
 
