@@ -159,14 +159,6 @@ int dji_set_angle(const struct device *dev, float angle)
 	struct dji_motor_data *data = dev->data;
 	const struct dji_motor_config *cfg = dev->config;
 
-	if (angle > 360) {
-		angle = fmodf(angle, 360);
-	} else if (angle < 0) {
-		while (angle < 0) {
-			angle += 360;
-		}
-	}
-
 	data->target_angle = angle;
 
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
@@ -419,9 +411,15 @@ static void proceed_delta_degree(const struct device *dev)
 	if (data_temp->RAWangle < 2048 && data_temp->RAWprev_angle > 6144) {
 		delta += 8192;
 		data_temp->common.round_cnt++;
+		if (data_temp->target_angle < 0 || data_temp->target_angle > 360) {
+			data_temp->target_angle -= 360;
+		}
 	} else if (data_temp->RAWangle > 6144 && data_temp->RAWprev_angle < 2048) {
 		delta -= 8192;
 		data_temp->common.round_cnt--;
+		if (data_temp->target_angle < 0 || data_temp->target_angle > 360) {
+			data_temp->target_angle += 360;
+		}
 	}
 
 	if (fabsf(config_temp->gear_ratio - 1) > 0.001f) {
