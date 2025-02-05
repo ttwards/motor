@@ -20,19 +20,21 @@
 #define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
 	{                                                                                          \
 		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
+		.integral_limit = DT_STRING_UNQUOTED(node_id, i_max),                              \
+		.output_limit = DT_STRING_UNQUOTED(node_id, out_max),                              \
 		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
 		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
 		.mit = false,                                                                      \
 	}
 
 #define PID_CONFIG_DEFINE(inst)                                                                    \
-	static const struct pid_config pid_config_##inst =                                  \
+	static const struct pid_config pid_config_##inst =                                         \
 		PID_SINGLE_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst));
 
 #define PID_INST(inst)                                                                             \
 	PID_CONFIG_DEFINE(inst)                                                                    \
-	PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, NULL, &pid_config_##inst,       \
-			     POST_KERNEL, CONFIG_MOTOR_INIT_PRIORITY, NULL);
+	PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, NULL, &pid_config_##inst, POST_KERNEL, \
+			     CONFIG_MOTOR_INIT_PRIORITY, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(PID_INST)
 

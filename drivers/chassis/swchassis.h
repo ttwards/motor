@@ -1,3 +1,4 @@
+#include "zephyr/drivers/pid.h"
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/chassis.h>
@@ -39,7 +40,8 @@
 
 #define CHASSIS_CONFIG_INST(inst)                                                                  \
 	static const chassis_cfg_t chassis_cfg_##inst = {                                          \
-		.angle_pid = DEVICE_DT_GET(DT_PROP(DT_DRV_INST(inst), angle_pid)),                 \
+		.angle_pid = &PID_INS_NAME(DT_PROP(DT_DRV_INST(inst), angle_pid),                  \
+					   DT_NODE_FULL_NAME_UNQUOTED(DT_DRV_INST(inst))),         \
 		.steerwheels = STEERWHEELS_FOREACH(inst, GET_SW_DEVICE),                           \
 		.pos_X_offset = STEERWHEELS_FOREACH(inst, GET_SW_X_OFFSET),                        \
 		.pos_Y_offset = STEERWHEELS_FOREACH(inst, GET_SW_Y_OFFSET),                        \
@@ -50,7 +52,12 @@
 			 &chassis_cfg_##inst, POST_KERNEL, CONFIG_CHASSIS_INIT_PRIORITY,           \
 			 &swchassis_driver_api);
 
+#define CHASSIS_PID_DEFINE(inst)                                                                   \
+	PID_NEW_INSTANCE(DT_PROP(DT_DRV_INST(inst), angle_pid),                                    \
+			 DT_NODE_FULL_NAME_UNQUOTED(DT_DRV_INST(inst)))
+
 #define CHASSIS_INIT(inst)                                                                         \
+	CHASSIS_PID_DEFINE(inst)                                                                   \
 	CHASSIS_CONFIG_INST(inst)                                                                  \
 	CHASSIS_DATA_INST(inst)                                                                    \
 	CHASSIS_DEFINE_INST(inst)

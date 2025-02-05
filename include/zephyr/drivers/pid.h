@@ -27,10 +27,10 @@ extern "C" {
 #define MIT_PID    1U
 
 #define STATIC_VOID __attribute__((unused)) static void
-#define STATIC __attribute__((unused)) static
+#define STATIC      __attribute__((unused)) static
 
 #define PID_INS_CAT_NAME(node_name, name) DT_CAT(node_name, name)
-#define PID_INS_NAME(node_id, name) PID_INS_CAT_NAME(DT_NODE_FULL_NAME_UNQUOTED(node_id), name)
+#define PID_INS_NAME(node_id, name)       PID_INS_CAT_NAME(DT_NODE_FULL_NAME_UNQUOTED(node_id), name)
 
 #define PID_NEW_INSTANCE(node_id, name)                                                            \
 	struct pid_data PID_INS_NAME(node_id, name) = {                                            \
@@ -41,6 +41,8 @@ struct pid_config {
 	float k_p;
 	float k_i;
 	float k_d;
+	float integral_limit;
+	float output_limit;
 	bool mit;
 };
 

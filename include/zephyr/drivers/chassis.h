@@ -6,6 +6,7 @@
 #ifndef CHASSIS_H
 #define CHASSIS_H
 
+#include "zephyr/drivers/pid.h"
 #include "zephyr/toolchain.h"
 #include "zephyr/zbus/zbus.h"
 #include <math.h>
@@ -70,7 +71,7 @@ typedef struct {
 } chassis_data_t;
 
 typedef struct {
-	const struct device *angle_pid;
+	struct pid_data *angle_pid;
 	const struct device *steerwheels[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
 	float pos_X_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
 	float pos_Y_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];

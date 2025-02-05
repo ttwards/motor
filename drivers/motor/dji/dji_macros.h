@@ -7,7 +7,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/motor.h>
 
-#define CAN_SEND_STACK_SIZE 2048
+#define CAN_SEND_STACK_SIZE 1536
 #define CAN_SEND_PRIORITY   -1
 
 #define HIGH_BYTE(x)           ((x) >> 8)

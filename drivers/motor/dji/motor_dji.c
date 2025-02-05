@@ -31,8 +31,18 @@ const struct device *can_devices[] = {
 
 #define CTRL_STRUCT_DATA(node_id)                                                                  \
 	{                                                                                          \
-		.can_dev = DT_GET_CANPHY_BY_BUS(node_id), .flags = 0, .full = {{false}},           \
+		.can_dev = DT_GET_CANPHY_BY_BUS(node_id),                                          \
+		.flags = 0,                                                                        \
+		.full = {{false}},                                                                 \
 		.mask = 0,                                                                         \
+		.mapping =                                                                         \
+			{                                                                          \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
+			},                                                                         \
 	}
 
 static int frames_id(int tx_id)
@@ -258,7 +268,6 @@ int dji_init(const struct device *dev)
 		struct dji_motor_data *data = dev->data;
 		uint8_t frame_id = frames_id(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
-
 		data->ctrl_struct->mask[frame_id] |= 1 << id;
 		data->ctrl_struct->rx_ids[id] = cfg->common.rx_id;
 
@@ -317,8 +326,11 @@ int dji_init(const struct device *dev)
 			return -1;
 		}
 		if (dji_miss_handle_timer.expiry_fn == NULL) {
-			k_timer_init(&dji_miss_handle_timer, dji_miss_isr_handler, NULL);
-			k_timer_start(&dji_miss_handle_timer, K_NO_WAIT, K_MSEC(2));
+			k_work_queue_init(&dji_work_queue);
+			k_tid_t thread = k_work_queue_thread_get(&dji_work_queue);
+			k_thread_name_set(thread, "dji_motor_ctrl_thread");
+			k_timer_init(&dji_miss_handle_timer, dji_init_isr_handler, NULL);
+			k_timer_start(&dji_miss_handle_timer, K_MSEC(100), K_MSEC(4));
 		}
 	}
 	return 0;
@@ -380,14 +392,14 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	bool full = false;
 	for (int i = 0; i < 5; i++) {
 		uint8_t combined = ctrl_struct[bus_id].mask[i] & ctrl_struct[bus_id].flags;
-		if (combined == ctrl_struct[bus_id].mask[i]) {
-			//   ctrl_struct->flags ^= 0xF;
+		if (combined == ctrl_struct[bus_id].mask[i] && ctrl_struct[bus_id].mask[i]) {
+			ctrl_struct->flags ^= ctrl_struct[bus_id].mask[i];
 			ctrl_struct[bus_id].full[i] = true;
 			full = true;
 		}
 	}
 
-	if (full) {
+	if (full && !k_work_is_pending(&ctrl_struct[bus_id].full_handle)) {
 		k_work_submit_to_queue(&dji_work_queue, &ctrl_struct[bus_id].full_handle);
 	}
 	// k_thread_resume(dji_motor_ctrl_thread);
@@ -400,7 +412,9 @@ static const struct can_filter filter20x = {.id = 0x200, .mask = 0x3F0, .flags =
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
 {
 	struct k_sem *queue_sem = user_data;
-	k_sem_give(queue_sem);
+	if (!error) {
+		k_sem_give(queue_sem);
+	}
 }
 
 static void proceed_delta_degree(const struct device *dev)
@@ -553,6 +567,14 @@ void dji_miss_isr_handler(struct k_timer *dummy)
 	k_work_submit_to_queue(&dji_work_queue, &dji_miss_handle);
 }
 
+void dji_init_isr_handler(struct k_timer *dummy)
+{
+	ARG_UNUSED(dummy);
+	k_work_queue_start(&dji_work_queue, dji_work_queue_stack, CAN_SEND_STACK_SIZE,
+			   CAN_SEND_PRIORITY, NULL);
+	k_work_submit_to_queue(&dji_work_queue, &dji_init_handle);
+}
+
 void dji_miss_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
@@ -570,6 +592,7 @@ void dji_miss_handler(struct k_work *work)
 void dji_init_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+	k_timer_stop(&dji_miss_handle_timer);
 	struct device *can_dev = NULL;
 	for (int i = 0; i < CAN_COUNT; i++) {
 		k_sem_init(&ctrl_structs[i].tx_queue_sem, 3, 3); // 初始化信号量
@@ -587,6 +610,7 @@ void dji_init_handler(struct k_work *work)
 		// can ignore that.
 	}
 	dji_miss_handle_timer.expiry_fn = dji_miss_isr_handler;
+	k_timer_start(&dji_miss_handle_timer, K_NO_WAIT, K_MSEC(4));
 }
 
 void dji_tx_handler(struct k_work *work)
@@ -596,9 +620,10 @@ void dji_tx_handler(struct k_work *work)
 
 	for (int i = 0; i < 5; i++) { // For each frame
 		if (ctrl_struct->full[i]) {
-			uint8_t id_temp = ctrl_struct->mapping[0][0];
+			int8_t id_temp = ctrl_struct->mapping[0][0];
 			uint8_t data[8] = {0};
 			bool packed = false;
+
 			for (int j = 0; j < 4; j++) {
 				id_temp = ctrl_struct->mapping[i][j];
 				if (id_temp < 0) {
@@ -606,12 +631,9 @@ void dji_tx_handler(struct k_work *work)
 				}
 				const struct device *dev = ctrl_struct->motor_devs[id_temp];
 				struct dji_motor_data *data_temp = dev->data;
-				// Check if recieved just now.
-				if (id_temp < 8 &&
-				    ((ctrl_struct->flags & (1 << id_temp)) || !data_temp->online)) {
+				if (id_temp < 8 && data_temp->online) {
 					motor_calc(ctrl_struct->motor_devs[id_temp]);
 					can_pack_add(data, ctrl_struct->motor_devs[id_temp], j);
-					ctrl_struct->flags ^= 1 << id_temp;
 					packed = true;
 				}
 			}
@@ -621,11 +643,10 @@ void dji_tx_handler(struct k_work *work)
 				txframe.flags = 0;
 				memcpy(txframe.data, data, sizeof(data));
 				const struct device *can_dev = ctrl_struct->can_dev;
-				struct k_sem tx_queue_sem = ctrl_struct->tx_queue_sem;
-				int err = k_sem_take(&tx_queue_sem, K_NO_WAIT);
+				int err = k_sem_take(&ctrl_struct->tx_queue_sem, K_NO_WAIT);
 				if (err == 0) {
 					err = can_send(can_dev, &txframe, K_NO_WAIT,
-						       can_tx_callback, &tx_queue_sem);
+						       can_tx_callback, &ctrl_struct->tx_queue_sem);
 				}
 				if (err != 0 && err != -EAGAIN && err != -EBUSY) {
 					LOG_ERR("Error sending CAN frame (err %d)", err);

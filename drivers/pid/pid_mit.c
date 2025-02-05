@@ -22,8 +22,11 @@ LOG_MODULE_REGISTER(pid_mit, CONFIG_MOTOR_LOG_LEVEL);
 
 #define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
 	{                                                                                          \
-		.k_p = DT_STRING_UNQUOTED(node_id, k_p), .k_i = DT_STRING_UNQUOTED(node_id, k_i),  \
+		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
+		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
 		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
+		.integral_limit = DT_STRING_UNQUOTED(node_id, i_max),                              \
+		.output_limit = DT_STRING_UNQUOTED(node_id, out_max),                              \
 	}
 
 #define PID_CONFIG_DEFINE(inst)                                                                    \

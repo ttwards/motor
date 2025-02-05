@@ -46,7 +46,7 @@ struct motor_controller {
       */
 	int rx_ids[8];
 	bool full[5];
-	uint8_t mapping[5][4];
+	int8_t mapping[5][4];
 	uint8_t flags;
 	uint8_t mask[5];
 	struct device *motor_devs[8];
@@ -125,15 +125,16 @@ void dji_tx_handler(struct k_work *work);
 void dji_miss_handler(struct k_work *work);
 
 void dji_miss_isr_handler(struct k_timer *dummy);
+void dji_init_isr_handler(struct k_timer *dummy);
 
 void dji_init_handler(struct k_work *work);
 
-K_THREAD_STACK_DEFINE(dm_work_queue_stack, CAN_SEND_STACK_SIZE);
+K_THREAD_STACK_DEFINE(dji_work_queue_stack, CAN_SEND_STACK_SIZE);
 
 K_WORK_DEFINE(dji_miss_handle, dji_miss_handler);
 K_WORK_DEFINE(dji_init_handle, dji_init_handler);
 
-K_TIMER_DEFINE(dji_miss_handle_timer, dji_miss_isr_handler, NULL);
+K_TIMER_DEFINE(dji_miss_handle_timer, NULL, NULL);
 
 static const struct motor_driver_api motor_api_funcs = {
 	.motor_get_speed = dji_get_speed,

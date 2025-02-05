@@ -18,3 +18,7 @@ properties:
   k_d: 
     type: string
     required: true
+  i_max:
+    type: string
+  out_max:
+    type: string

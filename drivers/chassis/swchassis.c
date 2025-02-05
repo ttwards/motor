@@ -110,7 +110,6 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		currentSpeedX[idx] = speed * cos_theta;
 		currentSpeedY[idx] = speed * sin_theta;
 
-		printk("steerwheel%d: angle=%f speed=%f\n", idx, (double)angle, (double)speed);
 		idx++;
 	}
 
@@ -130,20 +129,19 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		float speedY = rollSpeedY + data->targetYSpeed;
 		float steerwheel_speed;
 		arm_sqrt_f32(speedX * speedX + speedY * speedY, &steerwheel_speed);
-		float steerwheel_angle;
+		float steerwheel_angle = 0;
 		arm_atan2_f32(speedY, speedX, &steerwheel_angle);
-
-		printk("steerwheel%d: angle=%f speed X=%f Y=%f  ", idx, (double)steerwheel_angle,
-		       (double)speedX, (double)speedY);
 
 		steerwheel_angle = -RAD2DEG(steerwheel_angle) + 90.0f;
 
 		printk("deg: %f\n", (double)steerwheel_angle);
 
-		if (fabsf(steerwheel_speed) > 0.05f) {
+		if (fabsf(steerwheel_speed) > 0.06f || fabsf(data->targetGyro) > 0.2f) {
 			steerwheel_set_angle(cfg->steerwheels[idx], steerwheel_angle);
+			steerwheel_set_speed(cfg->steerwheels[idx], steerwheel_speed);
+		} else {
+			steerwheel_set_speed(cfg->steerwheels[idx], 0);
 		}
-		steerwheel_set_speed(cfg->steerwheels[idx], steerwheel_speed);
 
 		idx++;
 	}
@@ -162,12 +160,12 @@ void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 
 	while (true) {
 		if (data->chassis_sensor_zbus != NULL) {
-			zbus_sub_wait_msg(&chassis_sensor_msg_suscriber, &chan, &pos, K_FOREVER);
+			zbus_sub_wait_msg(&chassis_sensor_msg_suscriber, &chan, &pos, K_MSEC(1));
 			if (data->chassis_sensor_zbus != chan) {
 				continue;
 			}
 		} else {
-			k_msleep(1000);
+			k_msleep(1);
 		}
 		data->currentYaw = pos.Yaw;
 
