@@ -85,6 +85,13 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		float deltaT = k_cyc_to_us_near32(*(data->curr_time) - *(data->prev_time));
 		if (!float_equal(ki, 0)) {
 			data->err_integral += (err * deltaT) / (1000000 * ki);
+			if (pid_para->integral_limit != 0) {
+				if (fabsf(data->err_integral) > pid_para->integral_limit) {
+					data->err_integral = data->err_integral > 0
+								     ? pid_para->integral_limit
+								     : -pid_para->integral_limit;
+				}
+			}
 		}
 		if (!float_equal(kd, 0)) {
 			data->err_derivate = kd * err / deltaT;
@@ -92,7 +99,12 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		//   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
 		//           to16t(kd * 1000000 * err / deltaT));
 		*(data->output) = kp * (err + data->err_integral + data->err_derivate);
-
+		if (pid_para->output_limit != 0 &&
+		    fabsf(*(data->output)) > pid_para->output_limit) {
+			*(data->output) = *(data->output) > 0 ? pid_para->output_limit
+							      : -pid_para->output_limit;
+		}
+		return;
 	} else {
 		if (data->curr == NULL) {
 			return;
@@ -104,6 +116,13 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		float deltaT = k_cyc_to_us_near32(*(data->curr_time) - *(data->prev_time));
 		if (!float_equal(ki, 0)) {
 			data->err_integral += (err * deltaT) / (1000000 * ki);
+			if (pid_para->integral_limit != 0) {
+				if (fabsf(data->err_integral) > pid_para->integral_limit) {
+					data->err_integral = data->err_integral > 0
+								     ? pid_para->integral_limit
+								     : -pid_para->integral_limit;
+				}
+			}
 		}
 		if (!float_equal(kd, 0)) {
 			data->err_derivate =
@@ -111,6 +130,11 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		}
 
 		*(data->output) = kp * (err + data->err_integral + data->err_derivate);
+		if (pid_para->output_limit != 0 &&
+		    fabsf(*(data->output)) > pid_para->output_limit) {
+			*(data->output) = *(data->output) > 0 ? pid_para->output_limit
+							      : -pid_para->output_limit;
+		}
 		return;
 	}
 }

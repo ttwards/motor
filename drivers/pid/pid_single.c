@@ -20,8 +20,8 @@
 #define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
 	{                                                                                          \
 		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
-		.integral_limit = DT_STRING_UNQUOTED(node_id, i_max),                              \
-		.output_limit = DT_STRING_UNQUOTED(node_id, out_max),                              \
+		.integral_limit = DT_STRING_UNQUOTED_OR(node_id, i_max, 0),                        \
+		.output_limit = DT_STRING_UNQUOTED_OR(node_id, out_max, 0),                        \
 		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
 		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
 		.mit = false,                                                                      \
