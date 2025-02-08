@@ -1,0 +1,13 @@
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+
+# SPDX-License-Identifier: Apache-2.0
+
+description: Biases of IMU
+
+compatible: "gyro-bias"
+
+properties:
+  gyro-bias:
+    description: Gyroscope bias
+    type: string-array
+    required: true

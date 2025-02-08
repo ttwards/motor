@@ -19,12 +19,19 @@
 #include "kalman_filter.c"
 #include <zephyr/kernel.h>
 
+#if DT_HAS_CHOSEN(zephyr_ccm)
+__ccm_bss_section QEKF_INS_t QEKF_INS;
+__ccm_data_section float IMU_QuaternionEKF_P[36] = default_EKF_P;
+__ccm_bss_section float IMU_QuaternionEKF_K[18];
+__ccm_bss_section float IMU_QuaternionEKF_H[18];
+#else
 QEKF_INS_t QEKF_INS;
-
-const float IMU_QuaternionEKF_F[36] = default_EKF_F;
 float IMU_QuaternionEKF_P[36] = default_EKF_P;
 float IMU_QuaternionEKF_K[18];
 float IMU_QuaternionEKF_H[18];
+#endif
+
+const float IMU_QuaternionEKF_F[36] = default_EKF_F;
 
 static float invSqrt(float x);
 static void IMU_QuaternionEKF_Observe(KalmanFilter_t *kf);
@@ -192,9 +199,12 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	QEKF_INS.q[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[1];
 	QEKF_INS.q[2] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[2];
 	QEKF_INS.q[3] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[3];
+
+#if !DT_HAS_CHOSEN(ares_bias)
 	QEKF_INS.GyroBias[0] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[4];
 	QEKF_INS.GyroBias[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[5];
 	QEKF_INS.GyroBias[2] = 0; // 大部分时候z轴通天,无法观测yaw的漂移
+#endif                            // DT_HAS_CHOSEN(ares_bias)
 
 	// 利用四元数反解欧拉角
 	QEKF_INS.Yaw =
@@ -381,7 +391,7 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
 	if (QEKF_INS.ChiSquare_Data[0] < 0.5f * QEKF_INS.ChiSquareTestThreshold) {
 		QEKF_INS.ConvergeFlag = 1;
 	}
-	// rk is bigger than thre but once converged
+	// rk is bigger than three but once converged
 	if (QEKF_INS.ChiSquare_Data[0] > QEKF_INS.ChiSquareTestThreshold && QEKF_INS.ConvergeFlag) {
 		if (QEKF_INS.StableFlag) {
 			QEKF_INS.ErrorCount++; // 载体静止时仍无法通过卡方检验

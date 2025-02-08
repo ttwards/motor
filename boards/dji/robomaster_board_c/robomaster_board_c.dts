@@ -21,6 +21,9 @@
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
 		zephyr,canbus = &can1;
+		zephyr,ccm = &ccm0;
+		ares,pwm = &heater;
+		ares,bias = &gyro_bias;
 		sbus,uart = &usart3;
 	};
 
@@ -48,6 +51,25 @@
 	// 	};
 	// };
 
+	pwmleds: pwmleds {
+		compatible = "pwm-leds";
+		status = "okay";
+		heater: heater {
+			pwms = <&pwm10 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+	};
+
+	imu_temp_pid: imu_temp_pid {
+		#controller-cells = <0>;
+		compatible = "pid,single";
+		k_p = "6000000";
+		k_i = "5";
+		k_d = "0.0000002";
+		i_max = "100000000";
+		out_max = "20000000.000000";
+		offset = "6750000.000000";
+	};
+
 	buttons {
 		compatible = "gpio-keys";
 		user_button: button_0 {
@@ -68,7 +90,12 @@
 				can_device = <&can2>;
 		};
 	};
-    
+
+	gyro_bias: gyro_bias {
+		compatible = "gyro-bias";
+		status = "okay";
+		gyro-bias = "-0.000330", "-0.000053", "0.004050";
+	};
 };
 
 &clk_lsi {
@@ -177,19 +204,15 @@ zephyr_udc0: &usbotg_fs {
 	status = "okay";
 };
 
-// &timers1 {
-// 	status = "okay";
-// 	st,prescaler = <10000>;
-
-// 	pwm1: pwm {
-// 		status = "okay";
-// 		pinctrl-0 = <&tim1_ch1_pe9
-// 					&tim1_ch2_pe11
-// 					&tim1_ch3_pe13
-// 					&tim1_ch4_pe14>;
-// 		pinctrl-names = "default";
-// 	};
-// };
+&timers10 {
+	status = "okay";
+	st,prescaler = <10000>;
+	pwm10: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim10_ch1_pf6>;
+		pinctrl-names = "default";
+	};
+};
 
 // &adc1 {
 // 	pinctrl-0 = <&adc_in4_pf6>;
@@ -234,24 +257,3 @@ zephyr_udc0: &usbotg_fs {
 		int3-4-conf-io = <0x01>;
     };
 };
-
-// &lptim1 {
-// 	clocks = <&rcc STM32_CLOCK_BUS_APB2 0x00000008>,
-// 		 <&rcc STM32_SRC_LSI LPTIM1_SEL(2)>;
-// 	status = "okay";
-// };
-
-// &timers2 {
-// 	status = "okay";
-// };
-
-// &timers5 {
-// 	status = "okay";
-// 	&pwm5 {
-// 		status = "okay";
-// 		pinctrl-0 = <&tim5_ch1_ph10
-// 					 &tim5_ch2_ph11
-// 					 &tim5_ch3_ph12>;
-// 		pinctrl-names = "default";
-// 	};
-// };

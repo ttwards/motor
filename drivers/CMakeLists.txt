@@ -18,3 +18,7 @@ add_subdirectory_ifdef(CONFIG_MOTOR_DM pid)
 add_subdirectory_ifdef(CONFIG_ARES_SBUS transfer)
 
 add_subdirectory_ifdef(CONFIG_CHASSIS chassis)
+
+if(CONFIG_IMU_PWM_TEMP_CTRL AND NOT CONFIG_MOTOR_DJI AND NOT CONFIG_MOTOR_MI AND NOT CONFIG_MOTOR_DM)
+    add_subdirectory(pid)
+endif()
