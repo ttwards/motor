@@ -151,8 +151,14 @@ int dji_set_speed(const struct device *dev, float speed_rpm)
 	}
 
 	data->target_rpm = speed_rpm;
+	data->current_mode_index = -1;
 	for (int i = 0; i < sizeof(cfg->common.pid_datas) / sizeof(cfg->common.pid_datas[0]); i++) {
 		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+			if (data->current_mode_index == -1) {
+				data->current_mode_index = i;
+				data->target_torque = 0;
+				return -ENOEXEC;
+			}
 			break;
 		}
 		if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
@@ -171,8 +177,14 @@ int dji_set_angle(const struct device *dev, float angle)
 
 	data->target_angle = angle;
 
+	data->current_mode_index = -1;
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
 		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+			if (data->current_mode_index == -1) {
+				data->current_mode_index = i;
+				data->target_torque = 0;
+				return -ENOEXEC;
+			}
 			break;
 		}
 		if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
@@ -180,6 +192,7 @@ int dji_set_angle(const struct device *dev, float angle)
 			data->current_mode_index = i;
 		}
 	}
+
 	// ctrl_struct->current[id] = pid_calc(dev);
 	return 0;
 }
@@ -198,7 +211,7 @@ int dji_set_torque(const struct device *dev, float torque)
 	data->target_torque = torque;
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
 		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-			data->current_mode_index = i + 1;
+			data->current_mode_index = i;
 			break;
 		}
 		if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
@@ -358,7 +371,6 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 		return;
 	}
 	struct dji_motor_data *motor_data = ctrl_struct->motor_devs[id]->data;
-	uint32_t prev_time = motor_data->curr_time;
 
 	k_spinlock_key_t key;
 	if (k_spin_trylock(&motor_data->data_input_lock, &key) != 0) {
@@ -369,13 +381,14 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 		return;
 	}
 	if (motor_data->missed_times > 3) {
-		LOG_ERR("Motor %d is responding again, resuming...", id);
 		motor_data->missed_times = 0;
 		motor_data->online = true;
 		const struct dji_motor_config *motor_cfg =
 			(const struct dji_motor_config *)ctrl_struct->motor_devs[id]->config;
 		int8_t frame_id = frames_id(motor_cfg->common.tx_id);
 		ctrl_struct[bus_id].mask[frame_id] ^= 1 << id;
+		LOG_ERR("Motor %d on canbus %d is responding again, resuming...", id,
+			(int)(ctrl_struct - ctrl_structs));
 	} else if (motor_data->missed_times > 0) {
 		motor_data->missed_times--;
 	}
@@ -387,8 +400,9 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	motor_data->RAWcurrent = COMBINE_HL8(rx_frame.data[4], rx_frame.data[5]);
 	motor_data->RAWtemp = rx_frame.data[6];
 	ctrl_struct[bus_id].flags |= 1 << id;
+	motor_data->prev_time =
+		(motor_data->curr_time == 0) ? (curr_time - 1) : motor_data->curr_time;
 	motor_data->curr_time = curr_time;
-	motor_data->prev_time = prev_time;
 	bool full = false;
 	for (int i = 0; i < 5; i++) {
 		uint8_t combined = ctrl_struct[bus_id].mask[i] & ctrl_struct[bus_id].flags;
@@ -453,19 +467,13 @@ static void proceed_delta_degree(const struct device *dev)
 
 	float delta_angle = data_temp->common.angle - data_temp->target_angle;
 
-	if (delta_angle > 0) {
-		if (delta_angle < 180) {
-			data_temp->pid_angle_input = delta_angle;
-		} else {
-			data_temp->pid_angle_input = delta_angle - 360.0f;
-		}
-	} else if (delta_angle < 0) {
-		if (delta_angle > -180) {
-			data_temp->pid_angle_input = delta_angle;
-		} else {
-			data_temp->pid_angle_input = delta_angle + 360.0f;
-		}
+	if (delta_angle > 180) {
+		delta_angle -= 360.0f;
+	} else if (delta_angle < -180) {
+		delta_angle += 360.0f;
 	}
+
+	data_temp->pid_angle_input = delta_angle;
 }
 
 static void can_pack_add(uint8_t *data, struct device *motor_dev, uint8_t num)
@@ -491,7 +499,8 @@ static void dji_timeout_handle(const struct device *dev, uint32_t curr_time,
 	if (k_cyc_to_us_near32(curr_time - prev_time) > 2000) {
 		motor_data->missed_times++;
 		if (motor_data->missed_times > 3) {
-			LOG_ERR("Motor %d is not responding", motor_cfg->common.id);
+			LOG_ERR("Motor %d on canbus %d is not responding", motor_cfg->common.id,
+				(int)(ctrl_struct - ctrl_structs));
 			ctrl_struct->mask[frames_id(motor_cfg->common.tx_id)] ^=
 				1 << (motor_cfg->common.id - 1);
 			motor_data->online = false;
@@ -517,16 +526,9 @@ static void motor_calc(const struct device *dev)
 	data_temp->common.torque = data_temp->RAWcurrent *
 				   convert[data_temp->convert_num][CURRENT2TORQUE] *
 				   config_temp->gear_ratio;
-
-	// If current_mode_index is -1, it means the motor is in torque control.
-	// From the current mode index to the end of the controller array
-	bool torque_proceeded = false;
 	for (int i = data_temp->current_mode_index;
 	     i < SIZE_OF_ARRAY(config_temp->common.capabilities); i++) {
 		if (config_temp->common.pid_datas[i]->pid_dev == NULL) {
-			if (torque_proceeded) {
-				break;
-			}
 			if (data_temp->target_torque > data_temp->common.torque_limit[1]) {
 				data_temp->target_torque = data_temp->common.torque_limit[1];
 			} else if (data_temp->target_torque < data_temp->common.torque_limit[0]) {
@@ -549,7 +551,7 @@ static void motor_calc(const struct device *dev)
 		}
 
 		if (strcmp(config_temp->common.capabilities[i], "torque") == 0) {
-			torque_proceeded = true;
+			break;
 		} else if (strcmp(config_temp->common.capabilities[i], "mit") == 0) {
 			break;
 		}

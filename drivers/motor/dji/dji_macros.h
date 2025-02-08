@@ -68,8 +68,8 @@
 #define DMOTOR_CONFIG_INST(inst)                                                                   \
 	static const struct dji_motor_config dji_motor_cfg_##inst = {                              \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (DT_PROP(DT_DRV_INST(inst), is_gm6020) ? 1 : 4) *                    \
-			      (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),            \
+		.gear_ratio = (DT_PROP(DT_DRV_INST(inst), is_gm6020) ? 1.0f : 4.0f) *              \
+			      DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),                   \
 		.is_gm6020 = DT_PROP(DT_DRV_INST(inst), is_gm6020),                                \
 		.is_m3508 = DT_PROP(DT_DRV_INST(inst), is_m3508),                                  \
 		.is_m2006 = DT_PROP(DT_DRV_INST(inst), is_m2006),                                  \
