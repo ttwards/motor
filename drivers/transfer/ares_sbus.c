@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include "zephyr/logging/log.h"
+#include "zephyr/sys/time_units.h"
 
 #define DT_DRV_COMPAT ares_sbus
 
@@ -23,32 +24,63 @@ K_MEM_SLAB_DEFINE(uart_slab, BUF_SIZE, 4, 4);
 
 static const struct device *uart_dev = DEVICE_DT_GET(DT_CHOSEN(sbus_uart));
 
-void sbus_parseframe(const struct device *dev)
-{ // 检查帧是否为空
+int sbus_parseframe_chan(const struct device *dev, int chan)
+{
+	// 检查帧是否为空
 	struct sbus_driver_data *data = dev->data;
 
-	// 数据转换成通道值
-	data->channels[0] = (data->data[1] >> 0 | (data->data[2] << 8)) & 0x07FF;
-	data->channels[1] = (data->data[2] >> 3 | (data->data[3] << 5)) & 0x07FF;
-	data->channels[2] =
-		(data->data[3] >> 6 | (data->data[4] << 2) | data->data[5] << 10) & 0x07FF;
-	data->channels[3] = (data->data[5] >> 1 | (data->data[6] << 7)) & 0x07FF;
-	data->channels[4] = (data->data[6] >> 4 | (data->data[7] << 4)) & 0x07FF;
-	data->channels[5] =
-		(data->data[7] >> 7 | (data->data[8] << 1) | data->data[9] << 9) & 0x07FF;
-	data->channels[6] = (data->data[9] >> 2 | (data->data[10] << 6)) & 0x07FF;
-	data->channels[7] = (data->data[10] >> 5 | (data->data[11] << 3)) & 0x07FF;
+	int current_cyc = k_cycle_get_32();
+	if (k_cyc_to_ms_near32(current_cyc - data->recv_cyc) > 100) {
+		return 1024;
+	}
 
-	data->channels[8] = (data->data[12] << 0 | (data->data[13] << 8)) & 0x07FF;
-	data->channels[9] = (data->data[13] >> 3 | (data->data[14] << 5)) & 0x07FF;
-	data->channels[10] =
-		(data->data[14] >> 6 | (data->data[16] << 2) | data->data[15] << 10) & 0x07FF;
-	data->channels[11] = (data->data[16] >> 1 | (data->data[17] << 7)) & 0x07FF;
-	data->channels[12] = (data->data[17] >> 4 | (data->data[18] << 4)) & 0x07FF;
-	data->channels[13] =
-		(data->data[18] >> 7 | (data->data[19] << 1) | data->data[20] << 9) & 0x07FF;
-	data->channels[14] = (data->data[20] >> 2 | (data->data[21] << 6)) & 0x07FF;
-	data->channels[15] = (data->data[21] >> 5 | (data->data[22] << 3)) & 0x07FF;
+	// 数据转换成通道值
+	switch (chan) {
+	case 0:
+		return (data->data[1] >> 0 | (data->data[2] << 8)) & 0x07FF;
+	case 1:
+		return (data->data[2] >> 3 | (data->data[3] << 5)) & 0x07FF;
+	case 2:
+		return (data->data[3] >> 6 | (data->data[4] << 2) | data->data[5] << 10) & 0x07FF;
+	case 3:
+		return (data->data[5] >> 1 | (data->data[6] << 7)) & 0x07FF;
+	case 4:
+		return (data->data[6] >> 4 | (data->data[7] << 4)) & 0x07FF;
+	case 5:
+		return (data->data[7] >> 7 | (data->data[8] << 1) | data->data[9] << 9) & 0x07FF;
+	case 6:
+		return (data->data[9] >> 2 | (data->data[10] << 6)) & 0x07FF;
+	case 7:
+		return (data->data[10] >> 5 | (data->data[11] << 3)) & 0x07FF;
+	case 8:
+		return (data->data[12] << 0 | (data->data[13] << 8)) & 0x07FF;
+	case 9:
+		return (data->data[13] >> 3 | (data->data[14] << 5)) & 0x07FF;
+	case 10:
+		return (data->data[14] >> 6 | (data->data[16] << 2) | data->data[15] << 10) &
+		       0x07FF;
+	case 11:
+		return (data->data[16] >> 1 | (data->data[17] << 7)) & 0x07FF;
+	case 12:
+		return (data->data[17] >> 4 | (data->data[18] << 4)) & 0x07FF;
+	case 13:
+		return (data->data[18] >> 7 | (data->data[19] << 1) | data->data[20] << 9) & 0x07FF;
+	case 14:
+		return (data->data[20] >> 2 | (data->data[21] << 6)) & 0x07FF;
+	case 15:
+		return (data->data[21] >> 5 | (data->data[22] << 3)) & 0x07FF;
+	default:
+		return 1024;
+	}
+}
+
+void sbus_parseframe(const struct device *dev)
+{
+	struct sbus_driver_data *data = dev->data;
+
+	for (int i = 0; i < 16; i++) {
+		data->channels[i] = sbus_parseframe_chan(dev, i);
+	}
 
 	data->frameLost = (data->data[23] & 0x04) >> 2;
 	data->failSafe = (data->data[23] & 0x08) >> 3;
@@ -85,6 +117,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		if (ptr_offset >= p && len >= 25 && ptr_offset < p + len) {
 			memcpy(data->data, ptr_offset, 25);
 		}
+		data->recv_cyc = k_cycle_get_32();
 		// 请求新的接收缓冲区
 		void *new_buf = NULL;
 		err = k_mem_slab_alloc(&uart_slab, &new_buf, K_NO_WAIT);
@@ -148,6 +181,12 @@ static int sbus_init(const struct device *dev)
 		return -ENODEV;
 	}
 
+	// 将所有通道值初始化为中间值
+	struct sbus_driver_data *data = dev->data;
+	for (int i = 0; i < 16; i++) {
+		data->channels[i] = 1024;
+	}
+
 	// 确保 UART 设备初始化完成
 	err = uart_callback_set(uart_dev, uart_callback, (void *)dev);
 	if (err) {
@@ -193,17 +232,18 @@ static int sbus_init(const struct device *dev)
 float sbus_getchannel_percentage(const struct device *dev, uint8_t channelid)
 {
 	struct sbus_driver_data *data = dev->data;
-	sbus_parseframe(dev);
+	int chan = sbus_parseframe_chan(dev, channelid);
 	float scale = 2.0f / (SBUS_MAX - SBUS_MIN);
-	float out = (int16_t)(data->channels[channelid] - 1024) * scale;
+	float out = (int16_t)(chan - 1024) * scale;
 	return out;
 }
+
 // 获取通道数字值
 int sbus_getchannel_digital(const struct device *dev, uint8_t channelid)
 {
 	struct sbus_driver_data *data = dev->data;
-	sbus_parseframe(dev);
-	return data->channels[channelid];
+	int chan = sbus_parseframe_chan(dev, channelid);
+	return chan;
 }
 
 static struct sbus_driver_api sbus_api = {
