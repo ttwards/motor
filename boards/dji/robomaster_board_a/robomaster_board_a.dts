@@ -17,6 +17,7 @@
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
 		zephyr,canbus = &can1;
+		zephyr,ccm = &ccm0;
 		sbus,uart = &usart1;
 	};
 
