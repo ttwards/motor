@@ -14,11 +14,13 @@ properties:
     required: true
   k_i:
     type: string
-    required: true
   k_d: 
     type: string
-    required: true
   i_max:
     type: string
   out_max:
+    type: string
+  offset:
+    type: string
+  detri_lpf:
     type: string

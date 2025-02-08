@@ -18,15 +18,15 @@
 
 #define DT_DRV_COMPAT pid_mit
 
-LOG_MODULE_REGISTER(pid_mit, CONFIG_MOTOR_LOG_LEVEL);
-
 #define PID_SINGLE_DT_DRIVER_CONFIG_GET(node_id)                                                   \
 	{                                                                                          \
 		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
 		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
 		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
 		.integral_limit = DT_STRING_UNQUOTED_OR(node_id, i_max, 0),                        \
+		.detri_lpf = DT_STRING_UNQUOTED_OR(node_id, detri_lpf, NAN),                       \
 		.output_limit = DT_STRING_UNQUOTED_OR(node_id, out_max, 0),                        \
+		.output_offset = DT_STRING_UNQUOTED_OR(node_id, offset, 0),                        \
 	}
 
 #define PID_CONFIG_DEFINE(inst)                                                                    \
@@ -36,7 +36,7 @@ LOG_MODULE_REGISTER(pid_mit, CONFIG_MOTOR_LOG_LEVEL);
 #define PID_INST(inst)                                                                             \
 	PID_CONFIG_DEFINE(inst)                                                                    \
 	PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, NULL, &mit_cfg_##inst, POST_KERNEL,    \
-			     CONFIG_MOTOR_INIT_PRIORITY, NULL);
+			     90, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(PID_INST)
 

@@ -43,6 +43,8 @@ struct pid_config {
 	float k_d;
 	float integral_limit;
 	float output_limit;
+	float output_offset;
+	float detri_lpf;
 	bool mit;
 };
 
@@ -74,17 +76,20 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		return;
 	}
 	const struct pid_config *pid_para = dev->config;
+	if (data->curr == NULL) {
+		return;
+	}
+	float kp = pid_para->k_p;
+	float ki = pid_para->k_i;
+	float kd = pid_para->k_d;
+	float err = *(data->ref) - *(data->curr);
+	float deltaT = k_cyc_to_us_near32(*(data->curr_time) - *(data->prev_time));
+	if (deltaT == 0) {
+		return;
+	}
 	if (!pid_para->mit) {
-		if (data->curr == NULL) {
-			return;
-		}
-		float kp = pid_para->k_p;
-		float ki = pid_para->k_i;
-		float kd = pid_para->k_d;
-		float err = *(data->ref) - *(data->curr);
-		float deltaT = k_cyc_to_us_near32(*(data->curr_time) - *(data->prev_time));
-		if (!float_equal(ki, 0)) {
-			data->err_integral += (err * deltaT) / (1000000 * ki);
+		if (!isnanf(ki) && !float_equal(ki, 0)) {
+			data->err_integral += (err * deltaT) / ki;
 			if (pid_para->integral_limit != 0) {
 				if (fabsf(data->err_integral) > pid_para->integral_limit) {
 					data->err_integral = data->err_integral > 0
@@ -93,12 +98,22 @@ STATIC_VOID pid_calc(struct pid_data *data)
 				}
 			}
 		}
-		if (!float_equal(kd, 0)) {
-			data->err_derivate = kd * err / deltaT;
+		if (!isnanf(kd)) {
+			if (isnanf(pid_para->detri_lpf)) {
+				data->err_derivate =
+					kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT;
+			} else {
+				data->err_derivate =
+					pid_para->detri_lpf * data->err_derivate +
+					(1 - pid_para->detri_lpf) *
+						(kd * (*(data->detri_ref) - *(data->detri_curr)) /
+						 deltaT);
+			}
 		}
 		//   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
 		//           to16t(kd * 1000000 * err / deltaT));
-		*(data->output) = kp * (err + data->err_integral + data->err_derivate);
+		*(data->output) = kp * (err + data->err_integral + data->err_derivate) +
+				  pid_para->output_offset;
 		if (pid_para->output_limit != 0 &&
 		    fabsf(*(data->output)) > pid_para->output_limit) {
 			*(data->output) = *(data->output) > 0 ? pid_para->output_limit
@@ -106,16 +121,8 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		}
 		return;
 	} else {
-		if (data->curr == NULL) {
-			return;
-		}
-		float kp = pid_para->k_p;
-		float ki = pid_para->k_i;
-		float kd = pid_para->k_d;
-		float err = *(data->ref) - *(data->curr);
-		float deltaT = k_cyc_to_us_near32(*(data->curr_time) - *(data->prev_time));
-		if (!float_equal(ki, 0)) {
-			data->err_integral += (err * deltaT) / (1000000 * ki);
+		if (!isnanf(ki) && !float_equal(ki, 0)) {
+			data->err_integral += (err * deltaT) / ki;
 			if (pid_para->integral_limit != 0) {
 				if (fabsf(data->err_integral) > pid_para->integral_limit) {
 					data->err_integral = data->err_integral > 0
@@ -124,12 +131,21 @@ STATIC_VOID pid_calc(struct pid_data *data)
 				}
 			}
 		}
-		if (!float_equal(kd, 0)) {
-			data->err_derivate =
-				kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT;
+		if (!isnanf(kd)) {
+			if (isnanf(pid_para->detri_lpf)) {
+				data->err_derivate =
+					kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT;
+			} else {
+				data->err_derivate =
+					pid_para->detri_lpf * data->err_derivate +
+					(1 - pid_para->detri_lpf) *
+						(kd * (*(data->detri_ref) - *(data->detri_curr)) /
+						 deltaT);
+			}
 		}
 
-		*(data->output) = kp * (err + data->err_integral + data->err_derivate);
+		*(data->output) = kp * (err + data->err_integral + data->err_derivate) +
+				  pid_para->output_offset;
 		if (pid_para->output_limit != 0 &&
 		    fabsf(*(data->output)) > pid_para->output_limit) {
 			*(data->output) = *(data->output) > 0 ? pid_para->output_limit
@@ -163,6 +179,8 @@ STATIC_VOID pid_reg_time(struct pid_data *data, uint32_t *curr_cyc, uint32_t *pr
 	}
 	data->curr_time = curr_cyc;
 	data->prev_time = prev_cyc;
+	data->err_integral = 0;
+	data->err_derivate = 0;
 }
 
 STATIC_VOID mit_reg_detri_input(struct pid_data *data, float *detri_curr, float *detri_ref)

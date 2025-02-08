@@ -22,9 +22,11 @@
 		.k_p = DT_STRING_UNQUOTED(node_id, k_p),                                           \
 		.integral_limit = DT_STRING_UNQUOTED_OR(node_id, i_max, 0),                        \
 		.output_limit = DT_STRING_UNQUOTED_OR(node_id, out_max, 0),                        \
-		.k_i = DT_STRING_UNQUOTED(node_id, k_i),                                           \
-		.k_d = DT_STRING_UNQUOTED(node_id, k_d),                                           \
+		.detri_lpf = DT_STRING_UNQUOTED_OR(node_id, detri_lpf, NAN),                       \
+		.k_i = DT_STRING_UNQUOTED_OR(node_id, k_i, NAN),                                   \
+		.k_d = DT_STRING_UNQUOTED_OR(node_id, k_d, NAN),                                   \
 		.mit = false,                                                                      \
+		.output_offset = DT_STRING_UNQUOTED_OR(node_id, offset, 0),                        \
 	}
 
 #define PID_CONFIG_DEFINE(inst)                                                                    \
@@ -34,7 +36,7 @@
 #define PID_INST(inst)                                                                             \
 	PID_CONFIG_DEFINE(inst)                                                                    \
 	PID_DEVICE_DT_DEFINE(DT_DRV_INST(inst), NULL, NULL, NULL, &pid_config_##inst, POST_KERNEL, \
-			     CONFIG_MOTOR_INIT_PRIORITY, NULL);
+			     90, NULL);
 
 DT_INST_FOREACH_STATUS_OKAY(PID_INST)
 
