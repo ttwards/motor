@@ -38,10 +38,8 @@ int swchassis_init(const struct device *dev)
 	while (cfg->steerwheels[idx] != NULL) {
 		float arc;
 		arm_atan2_f32(cfg->pos_Y_offset[idx], cfg->pos_X_offset[idx], &arc);
-		if (arc < 0) {
-			arc += 2 * PI;
-		}
-		data->angle_to_center[idx] = RAD2DEG(arc);
+
+		data->angle_to_center[idx] = -RAD2DEG(arc) + 90.0f;
 		arm_sqrt_f32(cfg->pos_X_offset[idx] * cfg->pos_X_offset[idx] +
 				     cfg->pos_Y_offset[idx] * cfg->pos_Y_offset[idx],
 			     &data->distance_to_center[idx]);
@@ -134,13 +132,16 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 
 		steerwheel_angle = -RAD2DEG(steerwheel_angle) + 90.0f;
 
-		printk("deg: %f\n", (double)steerwheel_angle);
-
-		if (fabsf(steerwheel_speed) > 0.06f || fabsf(data->targetGyro) > 0.2f) {
+		if (fabsf(steerwheel_speed) > 0.1f || fabsf(data->targetGyro) > 0.15f) {
 			steerwheel_set_angle(cfg->steerwheels[idx], steerwheel_angle);
 			steerwheel_set_speed(cfg->steerwheels[idx], steerwheel_speed);
 		} else {
-			steerwheel_set_speed(cfg->steerwheels[idx], 0);
+			int err = steerwheel_set_static(cfg->steerwheels[idx]);
+			if (err < 0) {
+				steerwheel_set_speed(cfg->steerwheels[idx], 0);
+			}
+			steerwheel_set_angle(cfg->steerwheels[idx],
+					     fmodf(data->angle_to_center[idx] + 90.0f, 360.0f));
 		}
 
 		idx++;
@@ -155,6 +156,13 @@ void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
+
+	for (int i = 0; i < CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT; i++) {
+		if (cfg->steerwheels[i] == NULL) {
+			break;
+		}
+		steerwheel_set_static(cfg->steerwheels[i]);
+	}
 
 	struct pos_data pos = {0};
 
@@ -171,18 +179,13 @@ void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 
 		float delta_Yaw = data->targetYaw - data->currentYaw;
 		delta_Yaw = fmodf(delta_Yaw, 360.0f);
-		if (delta_Yaw > 0) {
-			if (delta_Yaw < 180) {
-				data->pid_input = delta_Yaw;
-			} else {
-				data->pid_input = delta_Yaw - 360.0f;
-			}
-		} else if (delta_Yaw < 0) {
-			if (delta_Yaw > -180) {
-				data->pid_input = delta_Yaw;
-			} else {
-				data->pid_input = delta_Yaw + 360.0f;
-			}
+		if (delta_Yaw > 180) {
+			delta_Yaw -= 360.0f;
+		} else if (delta_Yaw < -180) {
+			delta_Yaw += 360.0f;
+		}
+		if (fabsf(delta_Yaw) > 0.8f) {
+			data->pid_input = delta_Yaw;
 		}
 		if ((pos.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
@@ -199,6 +202,6 @@ struct chassis_driver_api swchassis_driver_api = {
 };
 
 K_THREAD_DEFINE(chassis_thread, CHASSIS_STACK_SIZE, swchassis_main_thread,
-		DEVICE_DT_GET(DT_INST(0, DT_DRV_COMPAT)), NULL, NULL, 1, 0, 1000);
+		DEVICE_DT_GET(DT_INST(0, DT_DRV_COMPAT)), NULL, NULL, 1, 0, 0);
 
 DT_INST_FOREACH_STATUS_OKAY(CHASSIS_INIT)

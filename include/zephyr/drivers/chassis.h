@@ -16,7 +16,9 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/steerwheel.h>
 
+#ifndef RADS_TO_RPM
 #define RADPS_TO_RPM 6.28318531f
+#endif
 
 #ifdef __cplusplus
 extern "C" {

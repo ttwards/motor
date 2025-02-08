@@ -1,0 +1,17 @@
+# ARES configuration options
+
+# Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig ARES
+    bool "ARES options"
+    help
+      Enable support for ares modules.
+
+module = ARES
+module-str = ARES
+
+config IMU_PWM_TEMP_CTRL
+    bool "IMU_PWM_TEMP_CTRL"
+    help
+      Enable IMU PWM TEMP CTRL

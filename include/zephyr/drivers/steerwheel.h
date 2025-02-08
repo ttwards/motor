@@ -45,8 +45,10 @@ typedef struct {
 
 	float set_angle;
 	float set_rpm;
+	float static_angle;
 
 	bool negative;
+	bool initialized;
 } steerwheel_data_t;
 
 static inline void steerwheel_set_speed(const struct device *dev, float speed)
@@ -54,8 +56,16 @@ static inline void steerwheel_set_speed(const struct device *dev, float speed)
 	steerwheel_data_t *data = dev->data;
 	const steerwheel_cfg_t *cfg = dev->config;
 
+	if (!data->initialized) {
+		data->initialized = true;
+		data->static_angle = NAN;
+		motor_set_torque(cfg->steer_motor, 0);
+	}
+
 	data->current_angle = motor_get_angle(cfg->steer_motor);
 	data->current_speed = motor_get_speed(cfg->wheel_motor);
+
+	data->static_angle = NAN;
 
 	if (data->current_speed < 0) {
 		data->current_speed = -data->current_speed;
@@ -69,10 +79,39 @@ static inline void steerwheel_set_speed(const struct device *dev, float speed)
 	motor_set_speed(cfg->wheel_motor, data->set_rpm);
 }
 
+static inline int steerwheel_set_static(const struct device *dev)
+{
+	steerwheel_data_t *data = dev->data;
+	const steerwheel_cfg_t *cfg = dev->config;
+
+	data->set_rpm = 0;
+
+	if (!data->initialized) {
+		data->initialized = true;
+		data->static_angle = NAN;
+		motor_set_torque(cfg->steer_motor, 0);
+	}
+
+	data->current_angle = motor_get_angle(cfg->steer_motor);
+	data->current_speed = motor_get_speed(cfg->wheel_motor);
+
+	if (isnan(data->static_angle)) {
+		data->static_angle = motor_get_angle(cfg->wheel_motor);
+	}
+
+	return motor_set_angle(cfg->wheel_motor, data->static_angle);
+}
+
 static inline void steerwheel_set_angle(const struct device *dev, float angle)
 {
 	steerwheel_data_t *data = dev->data;
 	const steerwheel_cfg_t *cfg = dev->config;
+
+	if (!data->initialized) {
+		data->initialized = true;
+		data->static_angle = NAN;
+		motor_set_torque(cfg->wheel_motor, 0);
+	}
 
 	data->current_angle = motor_get_angle(cfg->steer_motor);
 	data->current_speed = motor_get_speed(cfg->wheel_motor);
@@ -128,7 +167,9 @@ static inline void steerwheel_set_angle(const struct device *dev, float angle)
 
 	if (data->negative != prev_nega) {
 		data->set_rpm = -data->set_rpm;
-		motor_set_speed(cfg->wheel_motor, data->set_rpm);
+		if (isnan(data->static_angle)) {
+			motor_set_speed(cfg->wheel_motor, data->set_rpm);
+		}
 	}
 }
 
