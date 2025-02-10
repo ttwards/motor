@@ -39,6 +39,7 @@
 extern "C" {
 #endif
 
+#define RPM2RADPS(rpm) ((rpm) * 0.104719755f)
 /**
  * @brief 电机工作模式枚举
  *
@@ -384,18 +385,25 @@ static inline void z_impl_motor_limit_torque(const struct device *dev, float max
 
 #define MOTOR_DT_DRIVER_CONFIG_GET(node_id)                                                        \
 	{                                                                                          \
-		.phy = (const struct device *)DT_GET_CANPHY(node_id), .id = DT_PROP(node_id, id),  \
-		.tx_id = DT_PROP(node_id, tx_id), .rx_id = DT_PROP(node_id, rx_id),                \
+		.phy = (const struct device *)DT_GET_CANPHY(node_id),                              \
+		.id = DT_PROP(node_id, id),                                                        \
+		.tx_id = DT_PROP(node_id, tx_id),                                                  \
+		.rx_id = DT_PROP(node_id, rx_id),                                                  \
 		.capabilities = DT_PROP(node_id, capabilities),                                    \
-		.pid_datas = {                                                                     \
-			DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_PID_INSTANCE_PTR,   \
-                                                  (, ))},   \
-	}
+		.pid_datas = {DT_FOREACH_PROP_ELEM_SEP(node_id, controllers, GET_PID_INSTANCE_PTR,   \
+                                                  (, ))},                                      \
+		}
 
 #define MOTOR_DT_DRIVER_DATA_GET(node_id)                                                          \
 	{                                                                                          \
-		.angle = 0, .rpm = 0, .torque = 0, .temperature = 0, .round_cnt = 0,               \
-		.speed_limit = {-99999, 99999}, .torque_limit = {-99999, 99999}, .mode = MIT,      \
+		.angle = 0,                                                                        \
+		.rpm = 0,                                                                          \
+		.torque = 0,                                                                       \
+		.temperature = 0,                                                                  \
+		.round_cnt = 0,                                                                    \
+		.speed_limit = {-99999, 99999},                                                    \
+		.torque_limit = {-99999, 99999},                                                   \
+		.mode = MIT,                                                                       \
 	}
 
 #define MOTOR_DT_DRIVER_CONFIG_INST_GET(inst) MOTOR_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst))
