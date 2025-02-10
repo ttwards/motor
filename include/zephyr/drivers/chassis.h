@@ -9,12 +9,11 @@
 #include "zephyr/drivers/pid.h"
 #include "zephyr/toolchain.h"
 #include "zephyr/zbus/zbus.h"
-#include <math.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/steerwheel.h>
+#include <zephyr/drivers/wheel.h>
 
 #ifndef RADS_TO_RPM
 #define RADPS_TO_RPM 6.28318531f
@@ -74,7 +73,7 @@ typedef struct {
 
 typedef struct {
 	struct pid_data *angle_pid;
-	const struct device *steerwheels[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
+	const struct device *wheels[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
 	float pos_X_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
 	float pos_Y_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
 } chassis_cfg_t;

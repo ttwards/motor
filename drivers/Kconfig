@@ -5,4 +5,5 @@ menu "Device Drivers"
 rsource "motor/Kconfig"
 rsource "transfer/Kconfig"
 rsource "chassis/Kconfig"
+rsource "wheel/Kconfig"
 endmenu

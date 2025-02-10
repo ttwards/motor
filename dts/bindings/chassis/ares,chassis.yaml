@@ -2,19 +2,21 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-description: Steer Wheel Chassis
+description: Multi Wheel Chassis
 
-compatible: "ares,swchassis"
+compatible: "ares,chassis"
 
 include: [base.yaml]
 
 properties:
-  steerwheels:
+  wheels:
     type: phandle-array
     required: true
-    specifier-space: steerwheel
+    specifier-space: wheel
   speed-limit:
     type: string
   angle-pid:
     type: phandle
     required: true
+  track_angle:
+    type: boolean

@@ -5,6 +5,7 @@
 
 menuconfig CHASSIS
     bool "Chassis drivers"
+	select WHEEL
     help
       Enable support for chassis.
 

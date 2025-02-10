@@ -10,18 +10,19 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/chassis.h>
 #include <zephyr/drivers/pid.h>
-#include "zephyr/drivers/steerwheel.h"
-#include "swchassis.h"
+#include "zephyr/drivers/wheel.h"
+#include <zephyr/logging/log.h>
+#include "chassis.h"
 #include <zephyr/zbus/zbus.h>
 #include "zephyr/kernel.h"
 #include "arm_math.h"
 #include <math.h>
 
-#define DT_DRV_COMPAT ares_swchassis
+#define DT_DRV_COMPAT ares_chassis
 
 #define RAD2DEG(x) 57.2957795131f * x
 
-LOG_MODULE_REGISTER(swchassis, CONFIG_MOTOR_LOG_LEVEL);
+LOG_MODULE_REGISTER(chassis, CONFIG_MOTOR_LOG_LEVEL);
 
 ZBUS_MSG_SUBSCRIBER_DEFINE(chassis_sensor_msg_suscriber);
 
@@ -30,12 +31,12 @@ ZBUS_MSG_SUBSCRIBER_DEFINE(chassis_sensor_msg_suscriber);
 #define M_PI_2 1.57079632679489661923f
 #endif
 
-int swchassis_init(const struct device *dev)
+int cchassis_init(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
 	int idx = 0;
-	while (cfg->steerwheels[idx] != NULL) {
+	while (cfg->wheels[idx] != NULL) {
 		float arc;
 		arm_atan2_f32(cfg->pos_Y_offset[idx], cfg->pos_X_offset[idx], &arc);
 
@@ -53,14 +54,14 @@ int swchassis_init(const struct device *dev)
 	return 0;
 }
 
-void swchassis_set_angle(const struct device *dev, float angle)
+void cchassis_set_angle(const struct device *dev, float angle)
 {
 	chassis_data_t *data = dev->data;
 	data->targetYaw = angle;
 	data->angleControl = true;
 }
 
-void swchassis_set_speed(const struct device *dev, float x_speed, float y_speed)
+void cchassis_set_speed(const struct device *dev, float x_speed, float y_speed)
 {
 	chassis_data_t *data = dev->data;
 	data->targetXSpeed = x_speed;
@@ -68,20 +69,20 @@ void swchassis_set_speed(const struct device *dev, float x_speed, float y_speed)
 	data->angleControl = false;
 }
 
-void swchassis_set_gyro(const struct device *dev, float gyro)
+void cchassis_set_gyro(const struct device *dev, float gyro)
 {
 	chassis_data_t *data = dev->data;
 	data->targetGyro = gyro;
 	data->angleControl = false;
 }
 
-chassis_status_t *swchassis_get_status(const struct device *dev)
+chassis_status_t *cchassis_get_status(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
 	return &data->chassis_status;
 }
 
-void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
+void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 {
 	data->prevTime = data->currTime;
 	data->currTime = k_cycle_get_32();
@@ -95,11 +96,12 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 	float currentSpeedX[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT] = {0};
 	float currentSpeedY[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT] = {0};
 	float currentGyro = 0;
-	while (cfg->steerwheels[idx] != NULL) {
+	while (cfg->wheels[idx] != NULL) {
 		// 由于我们的轮电机使用的是速度环PID控制
 		// 我不认为它们会疯转，但可能存在遇到障碍
-		float angle = steerwheel_get_angle(cfg->steerwheels[idx]);
-		float speed = steerwheel_get_speed(cfg->steerwheels[idx]);
+		wheel_status_t *status = wheel_get_speed(cfg->wheels[idx]);
+		float angle = status->angle;
+		float speed = status->speed;
 
 		float sin_theta, cos_theta;
 
@@ -117,14 +119,22 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 	} else if (data->targetGyro < -6) {
 		data->targetGyro = -6;
 	}
-	while (cfg->steerwheels[idx] != NULL) {
-		float sin_theta, cos_theta;
-		float theta = data->angle_to_center[idx] + data->currentYaw;
-		arm_sin_cos_f32(theta, &sin_theta, &cos_theta);
+	while (cfg->wheels[idx] != NULL) {
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->targetGyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->targetGyro;
+#if TRACK_ANGLE
 		float speedX = rollSpeedX + data->targetXSpeed;
 		float speedY = rollSpeedY + data->targetYSpeed;
+#else
+		// 将角度转换为弧度
+		float radians = -data->currentYaw * PI / 180.0f;
+
+		// 计算旋转后的新速度
+		float speedX = data->targetXSpeed * cosf(radians) -
+			       data->targetYSpeed * sinf(radians) + rollSpeedX;
+		float speedY = data->targetXSpeed * sinf(radians) +
+			       data->targetYSpeed * cosf(radians) + rollSpeedY;
+#endif
 		float steerwheel_speed;
 		arm_sqrt_f32(speedX * speedX + speedY * speedY, &steerwheel_speed);
 		float steerwheel_angle = 0;
@@ -133,22 +143,21 @@ void swchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		steerwheel_angle = -RAD2DEG(steerwheel_angle) + 90.0f;
 
 		if (fabsf(steerwheel_speed) > 0.1f || fabsf(data->targetGyro) > 0.15f) {
-			steerwheel_set_angle(cfg->steerwheels[idx], steerwheel_angle);
-			steerwheel_set_speed(cfg->steerwheels[idx], steerwheel_speed);
+			wheel_set_speed(cfg->wheels[idx], steerwheel_speed, steerwheel_angle);
 		} else {
-			int err = steerwheel_set_static(cfg->steerwheels[idx]);
+			int err = wheel_set_static(cfg->wheels[idx],
+						   data->angle_to_center[idx] + 90.0f);
 			if (err < 0) {
-				steerwheel_set_speed(cfg->steerwheels[idx], 0);
+				wheel_set_speed(cfg->wheels[idx], 0,
+						data->angle_to_center[idx] + 90.0f);
 			}
-			steerwheel_set_angle(cfg->steerwheels[idx],
-					     fmodf(data->angle_to_center[idx] + 90.0f, 360.0f));
 		}
 
 		idx++;
 	}
 }
 
-void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
+void cchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 {
 	ARG_UNUSED(ptr2);
 	ARG_UNUSED(ptr3);
@@ -158,11 +167,13 @@ void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 	const chassis_cfg_t *cfg = dev->config;
 
 	for (int i = 0; i < CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT; i++) {
-		if (cfg->steerwheels[i] == NULL) {
+		if (cfg->wheels[i] == NULL) {
 			break;
 		}
-		steerwheel_set_static(cfg->steerwheels[i]);
+		wheel_set_static(cfg->wheels[i], 90.0f);
 	}
+
+	k_msleep(1000);
 
 	struct pos_data pos = {0};
 
@@ -190,18 +201,18 @@ void swchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 		if ((pos.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
 		}
-		swchassis_resolve(data, cfg);
+		cchassis_resolve(data, cfg);
 	}
 }
 
-struct chassis_driver_api swchassis_driver_api = {
-	.set_angle = swchassis_set_angle,
-	.set_speed = swchassis_set_speed,
-	.set_gyro = swchassis_set_gyro,
-	.get_status = swchassis_get_status,
+struct chassis_driver_api chassis_driver_api = {
+	.set_angle = cchassis_set_angle,
+	.set_speed = cchassis_set_speed,
+	.set_gyro = cchassis_set_gyro,
+	.get_status = cchassis_get_status,
 };
 
-K_THREAD_DEFINE(chassis_thread, CHASSIS_STACK_SIZE, swchassis_main_thread,
+K_THREAD_DEFINE(chassis_thread, CHASSIS_STACK_SIZE, cchassis_main_thread,
 		DEVICE_DT_GET(DT_INST(0, DT_DRV_COMPAT)), NULL, NULL, 1, 0, 0);
 
 DT_INST_FOREACH_STATUS_OKAY(CHASSIS_INIT)
