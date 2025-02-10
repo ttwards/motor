@@ -4,14 +4,11 @@
 
 description: Steer Wheel
 
-compatible: "ares,steerwheel"
+compatible: "ares,mecanum"
 
 include: [base.yaml]
 
 properties:
-  steer-motor:
-    type: phandle
-    required: true
   wheel-motor:
     type: phandle
     required: true
@@ -21,10 +18,10 @@ properties:
   angle-offset:
     type: string
     required: true
-  inverse-steer:
-    type: boolean
   inverse-wheel:
     type: boolean
+  free-angle:
+    type: string
 
 wheel-cells:
   - offset_x

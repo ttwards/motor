@@ -1,0 +1,17 @@
+# Chassis driver configuration options
+
+# Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig WHEEL
+    bool "Wheel drivers"
+    help
+      Enable support for wheels.
+
+if WHEEL
+
+module = WHEEL
+module-str = WHEEL
+source "subsys/logging/Kconfig.template.log_config"
+
+endif
