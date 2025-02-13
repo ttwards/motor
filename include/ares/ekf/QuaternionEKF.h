@@ -24,6 +24,8 @@
 #define FALSE 0 /**< boolean fails */
 #endif
 
+#define PHY_G 9.8161f
+
 typedef struct {
 	uint8_t Initialized;
 	KalmanFilter_t IMU_QuaternionEKF;
@@ -32,8 +34,11 @@ typedef struct {
 	uint64_t ErrorCount;
 	uint64_t UpdateCount;
 
-	float q[4];        // 四元数估计值
-	float GyroBias[3]; // 陀螺仪零偏估计值
+	float q[4];         // 四元数估计值
+	float GyroBias[3];  // 陀螺仪零偏估计值
+	float AccelBias[3]; // 加速度计零偏估计值
+
+	float g; // 重力加速度
 
 	float Gyro[3];
 	float Accel[3];
@@ -76,6 +81,7 @@ void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float 
 void IMU_QuaternionEKF_UpdateIMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax,
 						      float ay, float az, float accel_dt,
 						      float gyro_dt);
+void CalcBias(float *q, float *accel, float g, float *bias);
 
 #define default_EKF_F                                                                              \
 	{1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,                                     \

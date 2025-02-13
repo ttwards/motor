@@ -196,3 +196,61 @@ void MatInit(mat *m, uint8_t row, uint8_t col)
 	m->numRows = row;
 	m->pData = (float *)zmalloc(row * col * sizeof(float));
 }
+
+void GetGroundAccel(float *q, float *accel, float g, float *ground_accel)
+{
+	// 构造旋转矩阵(四元数转旋转矩阵)
+	float R[3][3];
+	R[0][0] = 1 - 2 * (q[2] * q[2] + q[3] * q[3]);
+	R[0][1] = 2 * (q[1] * q[2] - q[0] * q[3]);
+	R[0][2] = 2 * (q[1] * q[3] + q[0] * q[2]);
+
+	R[1][0] = 2 * (q[1] * q[2] + q[0] * q[3]);
+	R[1][1] = 1 - 2 * (q[1] * q[1] + q[3] * q[3]);
+	R[1][2] = 2 * (q[2] * q[3] - q[0] * q[1]);
+
+	R[2][0] = 2 * (q[1] * q[3] - q[0] * q[2]);
+	R[2][1] = 2 * (q[2] * q[3] + q[0] * q[1]);
+	R[2][2] = 1 - 2 * (q[1] * q[1] + q[2] * q[2]);
+
+	// 将加速度从板子坐标系转换到地面坐标系
+	ground_accel[0] = R[0][0] * accel[0] + R[0][1] * accel[1] + R[0][2] * accel[2];
+	ground_accel[1] = R[1][0] * accel[0] + R[1][1] * accel[1] + R[1][2] * accel[2];
+	ground_accel[2] = R[2][0] * accel[0] + R[2][1] * accel[1] + R[2][2] * accel[2];
+
+	// 减去重力分量
+	// 注意:假设重力方向为-z轴方向
+	ground_accel[2] -= g;
+}
+
+void GetDeviceAccel(float *q, float *ground_accel, float g, float *device_accel)
+{
+	// 构造旋转矩阵的转置(相当于逆矩阵)
+	float R[3][3];
+	// 原来的R[0][0]变成R[0][0], R[0][1]变成R[1][0], R[0][2]变成R[2][0]，以此类推
+	R[0][0] = 1 - 2 * (q[2] * q[2] + q[3] * q[3]);
+	R[1][0] = 2 * (q[1] * q[2] - q[0] * q[3]);
+	R[2][0] = 2 * (q[1] * q[3] + q[0] * q[2]);
+
+	R[0][1] = 2 * (q[1] * q[2] + q[0] * q[3]);
+	R[1][1] = 1 - 2 * (q[1] * q[1] + q[3] * q[3]);
+	R[2][1] = 2 * (q[2] * q[3] - q[0] * q[1]);
+
+	R[0][2] = 2 * (q[1] * q[3] - q[0] * q[2]);
+	R[1][2] = 2 * (q[2] * q[3] + q[0] * q[1]);
+	R[2][2] = 1 - 2 * (q[1] * q[1] + q[2] * q[2]);
+
+	// 先加回重力分量
+	float temp_accel[3];
+	temp_accel[0] = ground_accel[0];
+	temp_accel[1] = ground_accel[1];
+	temp_accel[2] = ground_accel[2] + g;
+
+	// 将加速度从地面坐标系转换回设备坐标系
+	device_accel[0] =
+		R[0][0] * temp_accel[0] + R[1][0] * temp_accel[1] + R[2][0] * temp_accel[2];
+	device_accel[1] =
+		R[0][1] * temp_accel[0] + R[1][1] * temp_accel[1] + R[2][1] * temp_accel[2];
+	device_accel[2] =
+		R[0][2] * temp_accel[0] + R[1][2] * temp_accel[1] + R[2][2] * temp_accel[2];
+}

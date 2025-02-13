@@ -23,7 +23,6 @@
 		zephyr,canbus = &can1;
 		zephyr,ccm = &ccm0;
 		ares,pwm = &heater;
-		ares,bias = &gyro_bias;
 		sbus,uart = &usart3;
 	};
 
@@ -63,9 +62,7 @@
 		#controller-cells = <0>;
 		compatible = "pid,single";
 		k_p = "6000000";
-		k_i = "5";
-		k_d = "0.0000002";
-		i_max = "100000000";
+		k_d = "0.02";
 		out_max = "20000000.000000";
 		offset = "6750000.000000";
 	};
@@ -89,12 +86,6 @@
 				status = "okay";
 				can_device = <&can2>;
 		};
-	};
-
-	gyro_bias: gyro_bias {
-		compatible = "gyro-bias";
-		status = "okay";
-		gyro-bias = "-0.000330", "-0.000053", "0.004050";
 	};
 };
 

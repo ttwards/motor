@@ -6,12 +6,13 @@
 #include <zephyr/fs/nvs.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
+#include <sys/types.h>
 
 static const int X = 0;
 static const int Y = 1;
 static const int Z = 2;
 
-#define FREQ 800
+#define FREQ  800
 
 const int n = 800 / FREQ;
 
@@ -26,13 +27,13 @@ typedef struct {
 
 	uint8_t flag;
 
-	int gyro_prev_cyc;
-	int accel_prev_cyc;
+	uint32_t gyro_prev_cyc;
+	uint32_t accel_prev_cyc;
 
 	float AccelLPF;
 
-	int gyro_curr_cyc;
-	int accel_curr_cyc;
+	uint32_t gyro_curr_cyc;
+	uint32_t accel_curr_cyc;
 
 	update_cb_t update_cb;
 
