@@ -59,8 +59,8 @@ struct pid_data {
 	float err_derivate;
 	float ratio;
 	struct device *pid_dev;
-	int32_t *curr_time;
-	int32_t *prev_time;
+	uint32_t *curr_time;
+	uint32_t *prev_time;
 	float *output;
 };
 

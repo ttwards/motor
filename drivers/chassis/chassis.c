@@ -66,14 +66,18 @@ void cchassis_set_speed(const struct device *dev, float x_speed, float y_speed)
 	chassis_data_t *data = dev->data;
 	data->targetXSpeed = x_speed;
 	data->targetYSpeed = y_speed;
-	data->angleControl = false;
 }
 
 void cchassis_set_gyro(const struct device *dev, float gyro)
 {
 	chassis_data_t *data = dev->data;
-	data->targetGyro = gyro;
-	data->angleControl = false;
+	if (!float_equal(gyro, 0)) {
+		data->targetGyro = gyro;
+		data->angleControl = false;
+	} else if (!data->angleControl) {
+		data->targetYaw = data->currentYaw;
+		data->angleControl = true;
+	}
 }
 
 chassis_status_t *cchassis_get_status(const struct device *dev)
@@ -114,11 +118,6 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 	}
 
 	idx = 0;
-	if (data->targetGyro > 6) {
-		data->targetGyro = 6;
-	} else if (data->targetGyro < -6) {
-		data->targetGyro = -6;
-	}
 	while (cfg->wheels[idx] != NULL) {
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->targetGyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->targetGyro;
@@ -197,7 +196,12 @@ void cchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 		}
 		if (fabsf(delta_Yaw) > 0.8f) {
 			data->pid_input = delta_Yaw;
+		} else {
+			data->pid_input = 0;
 		}
+
+		printk("Yaw: %f, targetYaw: %f, delta_Yaw: %f\n", data->currentYaw, data->targetYaw,
+		       delta_Yaw);
 		if ((pos.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
 		}
