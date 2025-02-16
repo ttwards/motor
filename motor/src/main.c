@@ -25,7 +25,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 /* Devicetree */
 #define CANBUS_NODE DT_CHOSEN(zephyr_canbus)
 #define CAN1_NODE   DT_INST(0, vnd_canbus)
-#define MOTOR1_NODE DT_INST(0, dji_motor)
+#define MOTOR1_NODE DT_INST(0, dm_motor)
 
 #define FEEDBACK_STACK_SIZE 1536
 
@@ -35,9 +35,10 @@ const struct device *motor1 = DEVICE_DT_GET(MOTOR1_NODE);
 /* CAN Feedback to console*/
 void console_feedback(void *arg1, void *arg2, void *arg3)
 {
-	while (1) {
-		LOG_INF("rpm: motor1: %.2f\n", (double)motor_get_speed(motor1));
-		k_msleep(500);
+	for (int i = 0; i < 10000; i++) {
+		motor_set_speed(motor1, i);
+		LOG_INF("Speed: %.2f, Set: %.2f", (double)motor_get_speed(motor1), (double)i);
+		k_msleep(20);
 	}
 }
 K_THREAD_DEFINE(feedback_thread, FEEDBACK_STACK_SIZE, console_feedback, NULL, NULL, NULL, 1, 0,
@@ -47,9 +48,9 @@ int main(void)
 {
 	board_init();
 
+	k_msleep(1000);
 	motor_control(motor1, ENABLE_MOTOR);
-	motor_set_speed(motor1, 500);
-
+	motor_set_mode(motor1, VO);
 	while (1) {
 		k_msleep(1500);
 	}

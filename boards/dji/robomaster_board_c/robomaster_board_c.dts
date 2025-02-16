@@ -162,7 +162,7 @@
 &usart6 {
 	pinctrl-0 = <&usart6_tx_pg14 &usart6_rx_pg9>;
 	pinctrl-names = "default";
-	current-speed = <2500000>;
+	current-speed = <4000000>;
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";

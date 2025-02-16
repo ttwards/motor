@@ -26,18 +26,6 @@ if(CLANG_TIDY_BIN)
     "${CMAKE_CURRENT_SOURCE_DIR}/drivers/**/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/zephyr/drivers/*.h"
   )
-
-  # 添加自定义目标 tidy，运行 clang-tidy 进行代码整理
-  add_custom_target(
-    tidy
-    COMMAND ${CLANG_TIDY_BIN}
-            ${TIDY_SOURCES}
-            -p=${CMAKE_BINARY_DIR}
-            --fix
-            --quiet
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Running clang-tidy to automatically fix code issues"
-  )
 endif()  # 结束 if(CLANG_TIDY_BIN)
 
 # 包含目录
@@ -46,3 +34,4 @@ zephyr_syscall_include_directories(include)
 
 # 添加子目录
 add_subdirectory(drivers)
+add_subdirectory(include)

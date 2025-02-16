@@ -1,26 +1,19 @@
 / {
 	motor0: motor0{
-		compatible = "dji,motor";
-		is_m3508;
+		compatible = "dm,motor";
 		id = <1>;
-		rx_id = <0x201>;
-		tx_id = <0x200>;
-		gear_ratio = "19.20";
+		rx_id = <0x00>;
+		tx_id = <0x01>;
+		gear_ratio = "1";
+		v_max = "785";
 		status = "okay";
 		can_channel = <&canbus1>;
-		controllers = <&angle_pid_1 &speed_pid_1>;
-		capabilities = "angle", "speed";
+		controllers = <&speed_pid>;
+		capabilities = "speed";
 	};
 
 	pid {
-		angle_pid_1: angle_pid_1 {
-			#controller-cells = <0>;
-			compatible = "pid,single";
-			k_p = "7";
-			k_i = "0.3";
-			k_d = "80";
-		};
-		speed_pid_1: speed_pid_1 {
+		speed_pid: speed_pid {
 			#controller-cells = <0>;
 			compatible = "pid,single";
 			k_p = "1.8";

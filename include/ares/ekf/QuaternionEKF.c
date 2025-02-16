@@ -24,21 +24,20 @@
 
 #if DT_HAS_CHOSEN(zephyr_ccm)
 __ccm_bss_section QEKF_INS_t QEKF_INS;
-__ccm_data_section float IMU_QuaternionEKF_P[36] = default_EKF_P;
-__ccm_bss_section float IMU_QuaternionEKF_K[18];
-__ccm_bss_section float IMU_QuaternionEKF_H[18];
+__ccm_data_section float IMU_QuaternionEKF_P[16] = default_EKF_P;
+__ccm_bss_section float IMU_QuaternionEKF_K[12];
+__ccm_bss_section float IMU_QuaternionEKF_H[12];
 #else
 QEKF_INS_t QEKF_INS;
-float IMU_QuaternionEKF_P[36] = default_EKF_P;
-float IMU_QuaternionEKF_K[18];
-float IMU_QuaternionEKF_H[18];
+float IMU_QuaternionEKF_P[16] = default_EKF_P;
+float IMU_QuaternionEKF_K[12];
+float IMU_QuaternionEKF_H[12];
 #endif
 
-const float IMU_QuaternionEKF_F[36] = default_EKF_F;
+const float IMU_QuaternionEKF_F[16] = default_EKF_F;
 
 static float invSqrt(float x);
 static void IMU_QuaternionEKF_Observe(KalmanFilter_t *kf);
-static void IMU_QuaternionEKF_F_Linearization_P_Fading(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf);
 
@@ -96,7 +95,7 @@ void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float 
 	QEKF_INS.accLPFcoef = lpf;
 
 	// 初始化矩阵维度信息
-	Kalman_Filter_Init(&QEKF_INS.IMU_QuaternionEKF, 6, 0, 3);
+	Kalman_Filter_Init(&QEKF_INS.IMU_QuaternionEKF, 4, 0, 3);
 	Matrix_Init(&QEKF_INS.ChiSquare, 1, 1, (float *)QEKF_INS.ChiSquare_Data);
 
 	// 姿态初始化
@@ -106,7 +105,7 @@ void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float 
 
 	// 自定义函数初始化,用于扩展或增加kf的基础功能
 	QEKF_INS.IMU_QuaternionEKF.User_Func0_f = IMU_QuaternionEKF_Observe;
-	QEKF_INS.IMU_QuaternionEKF.User_Func1_f = IMU_QuaternionEKF_F_Linearization_P_Fading;
+	// We don't probe bias now.
 	QEKF_INS.IMU_QuaternionEKF.User_Func2_f = IMU_QuaternionEKF_SetH;
 	QEKF_INS.IMU_QuaternionEKF.User_Func3_f = IMU_QuaternionEKF_xhatUpdate;
 
@@ -132,12 +131,10 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	static float accelInvNorm;
 
 	/*   F, number with * represent vals to be set
-	 0      1*     2*     3*     4     5
-	 6*     7      8*     9*    10    11
-	12*    13*    14     15*    16    17
-	18*    19*    20*    21     22    23
-	24     25     26     27     28    29
-	30     31     32     33     34    35
+	 0      1*     2*     3*
+	 4*     5      6*     7*
+	 8*     9*    10     11*
+	12*    13*    14*    15
 	*/
 	QEKF_INS.dt = gyro_dt;
 
@@ -159,17 +156,17 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	QEKF_INS.IMU_QuaternionEKF.F_data[2] = -halfgydt;
 	QEKF_INS.IMU_QuaternionEKF.F_data[3] = -halfgzdt;
 
-	QEKF_INS.IMU_QuaternionEKF.F_data[6] = halfgxdt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[8] = halfgzdt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[9] = -halfgydt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[4] = halfgxdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[6] = halfgzdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[7] = -halfgydt;
 
-	QEKF_INS.IMU_QuaternionEKF.F_data[12] = halfgydt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[13] = -halfgzdt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[15] = halfgxdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[8] = halfgydt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[9] = -halfgzdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[11] = halfgxdt;
 
-	QEKF_INS.IMU_QuaternionEKF.F_data[18] = halfgzdt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[19] = halfgydt;
-	QEKF_INS.IMU_QuaternionEKF.F_data[20] = -halfgxdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[12] = halfgzdt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[13] = halfgydt;
+	QEKF_INS.IMU_QuaternionEKF.F_data[14] = -halfgxdt;
 
 	// accel low pass filter,加速度过一下低通滤波平滑数据,降低撞击和异常的影响
 	if (QEKF_INS.UpdateCount == 200) // 如果是第一次进入,需要初始化低通滤波
@@ -287,61 +284,6 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 }
 
 /**
- * @brief 用于更新线性化后的状态转移矩阵F右上角的一个4x2分块矩阵,稍后用于协方差矩阵P的更新;
- *        并对零漂的方差进行限制,防止过度收敛并限幅防止发散
- *
- * @param kf
- */
-static void IMU_QuaternionEKF_F_Linearization_P_Fading(KalmanFilter_t *kf)
-{
-	static float q0, q1, q2, q3;
-	static float qInvNorm;
-
-	q0 = kf->xhatminus_data[0];
-	q1 = kf->xhatminus_data[1];
-	q2 = kf->xhatminus_data[2];
-	q3 = kf->xhatminus_data[3];
-
-	// quaternion normalize
-	qInvNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-	for (uint8_t i = 0; i < 4; ++i) {
-		kf->xhatminus_data[i] *= qInvNorm;
-	}
-	/*  F, number with * represent vals to be set
-	 0     1     2     3     4*     5*
-	 6     7     8     9    10*    11*
-	12    13    14    15    16*    17*
-	18    19    20    21    22*    23*
-	24    25    26    27    28     29
-	30    31    32    33    34     35
-	*/
-	// set F
-	kf->F_data[4] = q1 * QEKF_INS.dt / 2;
-	kf->F_data[5] = q2 * QEKF_INS.dt / 2;
-
-	kf->F_data[10] = -q0 * QEKF_INS.dt / 2;
-	kf->F_data[11] = q3 * QEKF_INS.dt / 2;
-
-	kf->F_data[16] = -q3 * QEKF_INS.dt / 2;
-	kf->F_data[17] = -q0 * QEKF_INS.dt / 2;
-
-	kf->F_data[22] = q2 * QEKF_INS.dt / 2;
-	kf->F_data[23] = -q1 * QEKF_INS.dt / 2;
-
-	// fading filter,防止零飘参数过度收敛
-	kf->P_data[28] /= QEKF_INS.lambda;
-	kf->P_data[35] /= QEKF_INS.lambda;
-
-	// 限幅,防止发散
-	if (kf->P_data[28] > 10000) {
-		kf->P_data[28] = 10000;
-	}
-	if (kf->P_data[35] > 10000) {
-		kf->P_data[35] = 10000;
-	}
-}
-
-/**
  * @brief 在工作点处计算观测函数h(x)的Jacobi矩阵H
  *
  * @param kf
@@ -350,10 +292,9 @@ static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf)
 {
 	static float doubleq0, doubleq1, doubleq2, doubleq3;
 	/* H
-	 0     1     2     3     4     5
-	 6     7     8     9    10    11
-	12    13    14    15    16    17
-	last two cols are zero
+	0     1     2     3
+	4     5     6     7
+	8     9    10    11
 	*/
 	// set H
 	doubleq0 = 2 * kf->xhatminus_data[0];
@@ -368,15 +309,15 @@ static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf)
 	kf->H_data[2] = -doubleq0;
 	kf->H_data[3] = doubleq1;
 
-	kf->H_data[6] = doubleq1;
-	kf->H_data[7] = doubleq0;
-	kf->H_data[8] = doubleq3;
-	kf->H_data[9] = doubleq2;
+	kf->H_data[4] = doubleq1;
+	kf->H_data[5] = doubleq0;
+	kf->H_data[6] = doubleq3;
+	kf->H_data[7] = doubleq2;
 
-	kf->H_data[12] = doubleq0;
-	kf->H_data[13] = -doubleq1;
-	kf->H_data[14] = -doubleq2;
-	kf->H_data[15] = doubleq3;
+	kf->H_data[8] = doubleq0;
+	kf->H_data[9] = -doubleq1;
+	kf->H_data[10] = -doubleq2;
+	kf->H_data[11] = doubleq3;
 }
 
 /**
@@ -386,7 +327,6 @@ static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf)
  *
  * @param kf
  */
-// 360us
 static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
 {
 	static float q0, q1, q2, q3;
@@ -493,32 +433,12 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
 	for (uint8_t i = 0; i < kf->K.numRows * kf->K.numCols; ++i) {
 		kf->K_data[i] *= QEKF_INS.AdaptiveGainScale;
 	}
-	for (uint8_t i = 4; i < 6; ++i) {
-		for (uint8_t j = 0; j < 3; ++j) {
-			kf->K_data[i * 3 + j] *=
-				QEKF_INS.OrientationCosine[i - 4] / 1.5707963f; // 1 rad
-		}
-	}
 
 	kf->temp_vector.numRows = kf->K.numRows;
 	kf->temp_vector.numCols = 1;
 	kf->MatStatus = Matrix_Multiply(&kf->K, &kf->temp_vector1,
 					&kf->temp_vector); // temp_vector = K(k)·(z(k) - H·xhat'(k))
 
-	// 零漂修正限幅,一般不会有过大的漂移
-	if (QEKF_INS.ConvergeFlag) {
-		for (uint8_t i = 4; i < 6; ++i) {
-			if (kf->temp_vector.pData[i] > 1e-2f * QEKF_INS.dt) {
-				kf->temp_vector.pData[i] = 1e-2f * QEKF_INS.dt;
-			}
-			if (kf->temp_vector.pData[i] < -1e-2f * QEKF_INS.dt) {
-				kf->temp_vector.pData[i] = -1e-2f * QEKF_INS.dt;
-			}
-		}
-	}
-
-	// 不修正yaw轴数据
-	kf->temp_vector.pData[3] = 0;
 	kf->MatStatus = Matrix_Add(&kf->xhatminus, &kf->temp_vector, &kf->xhat);
 }
 

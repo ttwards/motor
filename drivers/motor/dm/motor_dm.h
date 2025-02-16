@@ -55,7 +55,7 @@ struct dm_motor_data {
 
 	// Target
 	float target_angle;
-	float target_rpm;
+	float target_radps;
 	float target_torque;
 
 	int16_t RAWangle;
@@ -148,7 +148,7 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 		.err = 0,                                                                          \
 		.delta_deg_sum = 0,                                                                \
 		.target_angle = 0,                                                                 \
-		.target_rpm = 0,                                                                   \
+		.target_radps = 0,                                                                 \
 		.target_torque = 0,                                                                \
 		.params = {0, 0},                                                                  \
 		.update = false,                                                                   \
@@ -157,10 +157,10 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 #define DMMOTOR_CONFIG_INST(inst)                                                                  \
 	static const struct dm_motor_config dm_motor_cfg_##inst = {                                \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),            \
-		.v_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), v_max),                      \
-		.p_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), p_max),                      \
-		.t_max = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), t_max),                      \
+		.gear_ratio = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), gear_ratio, 1),      \
+		.v_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), v_max, 12.5),             \
+		.p_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), p_max, 20),               \
+		.t_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), t_max, 200),              \
 	};
 
 #define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \

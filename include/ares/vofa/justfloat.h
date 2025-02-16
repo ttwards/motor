@@ -1,7 +1,8 @@
+#ifndef JUSTFLOAT_H
+#define JUSTFLOAT_H
+
 #include <stdint.h>
 #include <zephyr/drivers/uart.h>
-
-const uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
 
 #define aresMaxChannel 24
 
@@ -29,7 +30,7 @@ struct JFData {
 	int channel;
 };
 
-struct JFData aresPlotData;
-
 struct JFData *jf_send_init(const struct device *uart_dev, int delay);
 void jf_channel_add(struct JFData *data, void *value, enum JF_Types type);
+
+#endif

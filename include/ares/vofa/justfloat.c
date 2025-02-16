@@ -9,6 +9,9 @@
 
 // LOG_MODULE_REGISTER(vofa, LOG_LEVEL_DBG);
 
+const uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
+struct JFData aresPlotData;
+
 static void jf_send_float(struct JFData *data)
 {
 	const struct device *uart_dev = data->uart_dev;

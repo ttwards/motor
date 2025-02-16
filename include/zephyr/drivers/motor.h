@@ -39,7 +39,8 @@
 extern "C" {
 #endif
 
-#define RPM2RADPS(rpm) ((rpm) * 0.104719755f)
+#define RPM2RADPS(rpm)   ((rpm) * 0.104719755f)
+#define RADPS2RPM(radps) ((radps) * 9.54929659f)
 /**
  * @brief 电机工作模式枚举
  *

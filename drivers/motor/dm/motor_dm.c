@@ -153,7 +153,7 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd)
 	const struct dm_motor_config *cfg = dev->config;
 
 	struct can_frame frame;
-	frame.id = cfg->common.tx_id;
+	frame.id = cfg->common.tx_id + data->tx_offset;
 	frame.flags = 0;
 	frame.dlc = 8;
 
@@ -213,7 +213,7 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 	switch (data->common.mode) {
 	case MIT:
 		pos_tmp = float_to_uint(data->target_angle, -cfg->p_max, cfg->p_max, 16);
-		vel_tmp = float_to_uint(data->target_rpm, -cfg->v_max, cfg->v_max, 12);
+		vel_tmp = float_to_uint(data->target_radps, -cfg->v_max, cfg->v_max, 12);
 		tor_tmp = float_to_uint(data->target_torque, -cfg->t_max, cfg->t_max, 12);
 		kp_tmp = float_to_uint(data->params.k_p, 0, 500, 12);
 		kd_tmp = float_to_uint(data->params.k_d, 0, 5, 12);
@@ -229,14 +229,14 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 		break;
 	case PV:
 		pbuf = (uint8_t *)&data->target_angle;
-		vbuf = (uint8_t *)&data->target_rpm;
+		vbuf = (uint8_t *)&data->target_radps;
 
 		frame->data[0] = *pbuf;
 		memcpy(frame->data, pbuf, 4);
 		memcpy(frame->data + 4, vbuf, 4);
 		break;
 	case VO:
-		vbuf = (uint8_t *)&data->target_rpm;
+		vbuf = (uint8_t *)&data->target_radps;
 
 		memcpy(frame->data, vbuf, 4);
 		break;
@@ -313,7 +313,7 @@ int dm_motor_set_torque(const struct device *dev, float torque)
 	struct dm_motor_data *data = dev->data;
 	const struct dm_motor_config *cfg = dev->config;
 
-	data->target_rpm = 0;
+	data->target_radps = 0;
 	data->target_angle = 0;
 	float torque_scaled = torque / cfg->gear_ratio;
 	data->target_torque = torque_scaled;
@@ -326,7 +326,7 @@ int dm_motor_set_speed(const struct device *dev, float speed_rpm)
 {
 	struct dm_motor_data *data = dev->data;
 
-	data->target_rpm = speed_rpm;
+	data->target_radps = RPM2RADPS(speed_rpm);
 
 	return 0;
 }
@@ -336,17 +336,17 @@ int dm_motor_set_angle(const struct device *dev, float angle)
 {
 	struct dm_motor_data *data = dev->data;
 
-	data->target_angle = angle;
+	data->target_angle = RAD2DEG * angle;
 
 	return 0;
 }
 
-static int get_motor_id(int id)
+static int get_motor_id(struct can_frame *frame)
 {
 	for (int i = 0; i < MOTOR_COUNT; i++) {
 		const struct device *dev = motor_devices[i];
 		const struct dm_motor_config *cfg = (const struct dm_motor_config *)(dev->config);
-		if (cfg->common.rx_id == id) {
+		if ((cfg->common.rx_id & 0xFF) == (frame->id & 0xFF)) {
 			return i;
 		}
 	}
@@ -358,7 +358,7 @@ static struct can_filter filters[CAN_COUNT];
 static void dm_can_rx_handler(const struct device *can_dev, struct can_frame *frame,
 			      void *user_data)
 {
-	int id = get_motor_id(frame->id);
+	int id = get_motor_id(frame);
 	if (id == -1) {
 		LOG_ERR("Unknown motor ID: %d", frame->id);
 		return;
@@ -367,11 +367,11 @@ static void dm_can_rx_handler(const struct device *can_dev, struct can_frame *fr
 	struct dm_motor_data *data = (struct dm_motor_data *)(motor_devices[id]->data);
 
 	if (data->missed_times > 0) {
-		data->missed_times--;
-		if (data->missed_times == 0) {
-			LOG_INF("Motor %d is back online", id);
-			data->online = true;
+		if (data->missed_times > 5 && data->online == true) {
+			data->missed_times = 0;
+			LOG_ERR("Motor %d is back online", id);
 		}
+		data->missed_times--;
 	}
 	data->err = frame->data[0] >> 4;
 	data->RAWangle = (frame->data[1] << 8) | (frame->data[2]);
@@ -394,8 +394,9 @@ void dm_rx_data_handler(struct k_work *work)
 
 		float prev_angle = data->common.angle;
 		data->common.angle =
-			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16)) * RAD2DEG;
-		data->common.rpm = uint_to_float(data->RAWrpm, -cfg->v_max, cfg->v_max, 12);
+			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16))*RAD2DEG;
+		data->common.rpm =
+			RADPS2RPM(uint_to_float(data->RAWrpm, -cfg->v_max, cfg->v_max, 12));
 		data->common.torque = uint_to_float(data->RAWtorque, -cfg->t_max, cfg->t_max, 12);
 
 		data->delta_deg_sum += data->common.angle - prev_angle;
@@ -431,7 +432,7 @@ void dm_tx_data_handler(struct k_work *work)
 	for (int i = 0; i < MOTOR_COUNT; i++) {
 		struct dm_motor_data *data = motor_devices[i]->data;
 		const struct dm_motor_config *cfg = motor_devices[i]->config;
-		if (data->online) {
+		if (data->online && data->missed_times <= 5) {
 			int can_id = get_can_id(motor_devices[i]);
 			dm_motor_pack(motor_devices[i], &tx_frame);
 			struct tx_frame queued_frame = {
@@ -441,13 +442,16 @@ void dm_tx_data_handler(struct k_work *work)
 			};
 			dm_send_queued(&queued_frame, &dm_can_tx_msgq);
 
-			if (++(data->missed_times) > 3 && data->err != 1) {
-				dm_motor_control(motor_devices[i], CLEAR_ERROR);
-			} else if (data->missed_times > 5) {
-				LOG_ERR("Motor %d is not responding, setting it to "
+			data->missed_times++;
+			if (data->missed_times > 5) {
+				LOG_ERR("Motor %d is not responding, missed %d times, setting it "
+					"to "
 					"offline...",
-					i);
-				data->online = false;
+					i, data->missed_times);
+				continue;
+			}
+			if (data->missed_times > 3 && data->err > 1) {
+				dm_motor_control(motor_devices[i], CLEAR_ERROR);
 			}
 		}
 	}
@@ -459,6 +463,8 @@ void dm_init_handler(struct k_work *work)
 	k_timer_stop(&dm_tx_timer);
 	LOG_DBG("DM motor control thread started");
 
+	uint32_t id_full1[CAN_COUNT] = {0};
+	uint32_t id_full0[CAN_COUNT] = {0};
 	for (int i = 0; i < MOTOR_COUNT; i++) {
 		int can_id = 0;
 		const struct dm_motor_config *cfg =
@@ -470,8 +476,14 @@ void dm_init_handler(struct k_work *work)
 				break;
 			}
 		}
+		if (filters[can_id].id == 0) {
+			filters[can_id].id = cfg->common.rx_id & 0xFF;
+			id_full1[can_id] = cfg->common.rx_id & 0xFF;
+			id_full0[can_id] = ~(cfg->common.rx_id & 0xFF);
+		}
 		filters[can_id].id &= cfg->common.rx_id & 0xFF;
-		filters[can_id].mask = ~(filters[can_id].mask ^ (cfg->common.rx_id & 0xFF)) & 0xFF;
+		id_full1[can_id] &= cfg->common.rx_id & 0xFF;
+		id_full0[can_id] &= ~(cfg->common.rx_id & 0xFF);
 
 		int err = can_start(cfg->common.phy);
 		if (err) {
@@ -480,9 +492,9 @@ void dm_init_handler(struct k_work *work)
 	}
 
 	for (int i = 0; i < CAN_COUNT; i++) {
-		filters[i].mask |= 0x700;
 		const struct device *can_dev = can_devices[i];
 
+		filters[i].mask = (id_full1[i] | id_full0[i]) & 0x7FF;
 		int err = can_add_rx_filter(can_dev, dm_can_rx_handler, 0, &filters[i]);
 		if (err < 0) {
 			LOG_ERR("Error adding CAN filter (err %d)", err);

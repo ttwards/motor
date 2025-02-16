@@ -19,7 +19,36 @@
 
 static int count = 0;
 
+const int n = 800 / FREQ;
+
 static bool temp_reached = false;
+
+static IMU_Param_t IMU_Param;
+
+#ifdef DT_HAS_CHOSEN(zephyr_ccm)
+__ccm_bss_section INS_t INS;
+#else
+INS_t INS;
+#endif
+
+const float xb[3] = {1, 0, 0};
+const float yb[3] = {0, 1, 0};
+const float zb[3] = {0, 0, 1};
+
+static const float gravity[3] = {0, 0, 9.81f};
+
+#ifdef CONFIG_IMU_PWM_TEMP_CTRL
+static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(DT_CHOSEN(ares_pwm));
+static float target_temp = 50.0f;
+static float current_temp = 25.0f;
+static float temp_pwm_output = 0.0f;
+#ifdef DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
+PID_NEW_INSTANCE(DT_NODELABEL(imu_temp_pid), ins)
+struct pid_data *temp_pwm_pid = &PID_INS_NAME(DT_NODELABEL(imu_temp_pid), ins);
+#else
+#error "No PID instance for IMU temperature control"
+#endif // DT_NODELABEL(imu_temp_pid)
+#endif // CONFIG_IMU_PWM_TEMP_CTRL
 
 float IMU_temp_read(const struct device *dev)
 {
@@ -76,13 +105,13 @@ static inline void IMU_Sensor_handle_update(INS_t *data)
 	}
 }
 
-static void IMU_Sensor_set_update_cb(update_cb_t cb)
+void IMU_Sensor_set_update_cb(update_cb_t cb)
 {
 	INS.update_cb = cb;
 }
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-static void IMU_Sensor_set_IMU_temp(float temp)
+void IMU_Sensor_set_IMU_temp(float temp)
 {
 	target_temp = temp;
 }
@@ -220,7 +249,7 @@ float init_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f}; // [w, x, y, z]
 
 IMU_Bias_t StoredIMU_Bias;
 
-static void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev)
+void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev)
 {
 	int ret = 0;
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL

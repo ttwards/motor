@@ -1,3 +1,6 @@
+#ifndef IMU_TASK_H
+#define IMU_TASK_H
+
 #include <stdint.h>
 #include <zephyr/drivers/sensor.h>
 #include "QuaternionEKF.h"
@@ -12,9 +15,7 @@ static const int X = 0;
 static const int Y = 1;
 static const int Z = 2;
 
-#define FREQ  800
-
-const int n = 800 / FREQ;
+#define FREQ 800
 
 typedef void (*update_cb_t)(QEKF_INS_t *QEKF);
 
@@ -66,38 +67,23 @@ static struct sensor_trigger gyro_trig = {
 	.chan = SENSOR_CHAN_GYRO_XYZ,
 };
 
-static IMU_Param_t IMU_Param;
-
-#ifdef DT_HAS_CHOSEN(zephyr_ccm)
-static __ccm_bss_section INS_t INS;
-#else
-static INS_t INS;
-#endif
-
-const float xb[3] = {1, 0, 0};
-const float yb[3] = {0, 1, 0};
-const float zb[3] = {0, 0, 1};
-
-static const float gravity[3] = {0, 0, 9.81f};
+float IMU_temp_read(const struct device *dev);
+int IMU_temp_pwm_set(const struct device *dev);
+void IMU_Sensor_set_update_cb(update_cb_t cb);
+#ifdef CONFIG_IMU_PWM_TEMP_CTRL
+void IMU_Sensor_set_IMU_temp(float temp);
+#endif // CONFIG_IMU_PWM_TEMP_CTRL
+void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev);
 
 #define MIN_PERIOD PWM_SEC(1U) / 128U
 #define MAX_PERIOD PWM_SEC(1U)
 
-#ifdef CONFIG_IMU_PWM_TEMP_CTRL
-static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(DT_CHOSEN(ares_pwm));
-static float target_temp = 50.0f;
-static float current_temp = 25.0f;
-static float temp_pwm_output = 0.0f;
-#ifdef DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
-PID_NEW_INSTANCE(DT_NODELABEL(imu_temp_pid), ins)
-struct pid_data *temp_pwm_pid = &PID_INS_NAME(DT_NODELABEL(imu_temp_pid), ins);
-#else
-#error "No PID instance for IMU temperature control"
-#endif // DT_NODELABEL(imu_temp_pid)
-#endif // CONFIG_IMU_PWM_TEMP_CTRL
+extern INS_t INS;
 
 #if DT_HAS_CHOSEN(ares_bias)
 #define GYRO_BIAS_NODE DT_CHOSEN(ares_bias)
 #if DT_NODE_HAS_PROP(GYRO_BIAS_NODE, gyro_bias)
 #endif // DT_NODE_HAS_PROP(GYRO_BIAS_NODE, gyro_bias)
 #endif // DT_HAS_CHOSEN(ares_bias)
+
+#endif // IMU_TASK_H
