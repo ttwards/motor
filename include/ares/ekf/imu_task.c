@@ -160,7 +160,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		gyro[Z] = sensor_value_to_float(&gyro_data[Z]);
 		float g = sqrtf(acc[X] * acc[X] + acc[Y] * acc[Y] + acc[Z] * acc[Z]);
 		float gyro_norm = sqrtf(gyro[X] * gyro[X] + gyro[Y] * gyro[Y] + gyro[Z] * gyro[Z]);
-		if (fabsf(g - 9.81f) > 0.325f || gyro_norm > 0.05f) {
+		if (fabsf(g - PHY_G) > 0.225f || gyro_norm > 0.05f) {
 			printk("Unexpected accel data!! Please stay still. Accel=%.4f\n",
 			       (double)g);
 		} else {

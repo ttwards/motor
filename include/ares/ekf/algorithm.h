@@ -107,6 +107,8 @@ float Dot3d(float *v1, float *v2);
 
 float AverageFilter(float new_data, float *buf, uint8_t len);
 
+void GetGroundAccel(float *q, float *accel, float g, float *ground_accel);
+
 #define rad_format(Ang) loop_float_constrain((Ang), -PI, PI)
 
 #endif

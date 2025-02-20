@@ -3,5 +3,8 @@
 
 zephyr_library()
 
-file(GLOB VOFA_SOURCES "*.c")
+set(VOFA_SOURCES
+	justfloat.c
+)
+
 zephyr_library_sources(${VOFA_SOURCES})

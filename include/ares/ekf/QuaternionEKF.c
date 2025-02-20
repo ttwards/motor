@@ -219,15 +219,6 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	QEKF_INS.IMU_QuaternionEKF.R_data[4] = QEKF_INS.R;
 	QEKF_INS.IMU_QuaternionEKF.R_data[8] = QEKF_INS.R;
 
-	// 调用kalman_filter.c封装好的函数,注意几个User_Funcx_f的调用
-	Kalman_Filter_Update(&QEKF_INS.IMU_QuaternionEKF);
-
-	// 获取融合后的数据,包括四元数和xy零飘值
-	QEKF_INS.q[0] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[0];
-	QEKF_INS.q[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[1];
-	QEKF_INS.q[2] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[2];
-	QEKF_INS.q[3] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[3];
-
 #if DT_HAS_CHOSEN(ares_bias) && CONFIG_AUTO_PROBE_GYRO_BIAS
 #error Do not use bias specified in dts and auto probe at the same time!!
 #endif // DT_HAS_CHOSEN(ares_bias) && CONFIG_AUTO_PROBE_BIAS
@@ -240,14 +231,14 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 		QEKF_INS.GyroBias[2] = QEKF_INS.GyroBias[2] * 0.9992f + gz * 0.0008f;
 		float bias[3];
 #ifndef PHY_G
-		QEKF_INS.g = QEKF_INS.g * 0.92f + NormOf3d(acc) * 0.08f;
+		QEKF_INS.g = QEKF_INS.g * 0.992f + NormOf3d(acc) * 0.008f;
 #else
 		QEKF_INS.g = PHY_G;
 #endif // PHY_G
 		CalcBias(QEKF_INS.q, acc, QEKF_INS.g, bias);
-		QEKF_INS.AccelBias[0] = QEKF_INS.AccelBias[0] * 0.92f + bias[0] * 0.08f;
-		QEKF_INS.AccelBias[1] = QEKF_INS.AccelBias[1] * 0.92f + bias[1] * 0.08f;
-		QEKF_INS.AccelBias[2] = QEKF_INS.AccelBias[2] * 0.92f + bias[2] * 0.08f;
+		QEKF_INS.AccelBias[0] = QEKF_INS.AccelBias[0] * 0.992f + bias[0] * 0.008f;
+		QEKF_INS.AccelBias[1] = QEKF_INS.AccelBias[1] * 0.992f + bias[1] * 0.008f;
+		QEKF_INS.AccelBias[2] = QEKF_INS.AccelBias[2] * 0.992f + bias[2] * 0.008f;
 	}
 #endif // CONFIG_AUTO_PROBE_GYRO_BIAS
 
@@ -256,6 +247,15 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	QEKF_INS.GyroBias[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[5];
 	QEKF_INS.GyroBias[2] = 0; // 大部分时候z轴通天,无法观测yaw的漂移
 #endif                            // DT_HAS_CHOSEN(ares_bias)
+
+	// 调用kalman_filter.c封装好的函数,注意几个User_Funcx_f的调用
+	Kalman_Filter_Update(&QEKF_INS.IMU_QuaternionEKF);
+
+	// 获取融合后的数据,包括四元数和xy零飘值
+	QEKF_INS.q[0] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[0];
+	QEKF_INS.q[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[1];
+	QEKF_INS.q[2] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[2];
+	QEKF_INS.q[3] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[3];
 
 	// 利用四元数反解欧拉角
 	QEKF_INS.Yaw =

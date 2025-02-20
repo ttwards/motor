@@ -3,5 +3,8 @@
 
 zephyr_library()
 
-file(GLOB INIT_SOURCES "*.c")
+set(INIT_SOURCES
+	init.c
+)
+
 zephyr_library_sources(${INIT_SOURCES})

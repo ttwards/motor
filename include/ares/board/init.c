@@ -11,6 +11,7 @@
 #include <zephyr/kernel/thread.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/debug/thread_analyzer.h>
+#include "init.h"
 
 #ifdef CONFIG_BOARD_DM_MC02
 #define XT30_1_NODE DT_NODELABEL(power1)

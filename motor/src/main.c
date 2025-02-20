@@ -14,7 +14,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/drivers/motor.h>
-#include <ares/board/init.c>
+#include <ares/board/init.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
@@ -38,7 +38,7 @@ void console_feedback(void *arg1, void *arg2, void *arg3)
 	for (int i = 0; i < 10000; i++) {
 		motor_set_speed(motor1, i);
 		LOG_INF("Speed: %.2f, Set: %.2f", (double)motor_get_speed(motor1), (double)i);
-		k_msleep(20);
+		k_msleep(5);
 	}
 }
 K_THREAD_DEFINE(feedback_thread, FEEDBACK_STACK_SIZE, console_feedback, NULL, NULL, NULL, 1, 0,
