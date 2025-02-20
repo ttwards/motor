@@ -20,3 +20,13 @@ config AUTO_PROBE_GYRO_BIAS
 	bool "AUTO_PROBE_GYRO_BIAS"
 	help
 	  Enable AUTO PROBE GYRO BIAS
+
+config EKF_LIB
+	bool "EKF_LIB"
+	help
+	  Enable EKF_LIB
+
+config VOFA_LIB
+	bool "VOFA_LIB"
+	help
+	  Enable VOFA_LIB
