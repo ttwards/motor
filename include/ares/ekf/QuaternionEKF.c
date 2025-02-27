@@ -41,35 +41,6 @@ static void IMU_QuaternionEKF_Observe(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf);
 
-void CalcBias(float *q, float *accel, float g, float *bias)
-{
-	// 理想情况下，静止时加速度计受力只有重力
-	// 将重力从地面坐标系(0,0,-g)旋转到设备坐标系得到理想值
-	float R[3][3];
-	R[0][0] = 1 - 2 * (q[2] * q[2] + q[3] * q[3]);
-	R[1][0] = 2 * (q[1] * q[2] - q[0] * q[3]);
-	R[2][0] = 2 * (q[1] * q[3] + q[0] * q[2]);
-
-	R[0][1] = 2 * (q[1] * q[2] + q[0] * q[3]);
-	R[1][1] = 1 - 2 * (q[1] * q[1] + q[3] * q[3]);
-	R[2][1] = 2 * (q[2] * q[3] - q[0] * q[1]);
-
-	R[0][2] = 2 * (q[1] * q[3] - q[0] * q[2]);
-	R[1][2] = 2 * (q[2] * q[3] + q[0] * q[1]);
-	R[2][2] = 1 - 2 * (q[1] * q[1] + q[2] * q[2]);
-
-	// 计算理想的加速度计读数
-	float ideal_accel[3];
-	ideal_accel[0] = g * R[2][0]; // 重力在设备x轴的分量
-	ideal_accel[1] = g * R[2][1]; // 重力在设备y轴的分量
-	ideal_accel[2] = g * R[2][2]; // 重力在设备z轴的分量
-
-	// 零飘 = 实际读数 - 理想值
-	bias[0] = accel[0] - ideal_accel[0];
-	bias[1] = accel[1] - ideal_accel[1];
-	bias[2] = accel[2] - ideal_accel[2];
-}
-
 /**
  * @brief Quaternion EKF initialization and some reference value
  * @param[in] process_noise1 quaternion process noise    10
@@ -138,9 +109,15 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	*/
 	QEKF_INS.dt = gyro_dt;
 
-	QEKF_INS.Gyro[0] = gx - QEKF_INS.GyroBias[0];
-	QEKF_INS.Gyro[1] = gy - QEKF_INS.GyroBias[1];
-	QEKF_INS.Gyro[2] = gz - QEKF_INS.GyroBias[2];
+	if (QEKF_INS.UpdateCount == 0) {
+		QEKF_INS.Gyro[0] = gx;
+		QEKF_INS.Gyro[1] = gy;
+		QEKF_INS.Gyro[2] = gz;
+	}
+
+	QEKF_INS.Gyro[0] = 0.008f * (gx - QEKF_INS.GyroBias[0]) + 0.992f * QEKF_INS.Gyro[0];
+	QEKF_INS.Gyro[1] = 0.008f * (gy - QEKF_INS.GyroBias[1]) + 0.992f * QEKF_INS.Gyro[1];
+	QEKF_INS.Gyro[2] = 0.008f * (gz - QEKF_INS.GyroBias[2]) + 0.992f * QEKF_INS.Gyro[2];
 
 	// set F
 	halfgxdt = 0.5f * QEKF_INS.Gyro[0] * gyro_dt;
@@ -169,7 +146,7 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	QEKF_INS.IMU_QuaternionEKF.F_data[14] = -halfgxdt;
 
 	// accel low pass filter,加速度过一下低通滤波平滑数据,降低撞击和异常的影响
-	if (QEKF_INS.UpdateCount == 200) // 如果是第一次进入,需要初始化低通滤波
+	if (QEKF_INS.UpdateCount == 0) // 如果是第一次进入,需要初始化低通滤波
 	{
 		QEKF_INS.Accel[0] = ax;
 		QEKF_INS.Accel[1] = ay;
@@ -177,13 +154,13 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	}
 	QEKF_INS.Accel[0] =
 		QEKF_INS.Accel[0] * QEKF_INS.accLPFcoef / (accel_dt + QEKF_INS.accLPFcoef) +
-		(ax - QEKF_INS.AccelBias[0]) * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
+		ax * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
 	QEKF_INS.Accel[1] =
 		QEKF_INS.Accel[1] * QEKF_INS.accLPFcoef / (accel_dt + QEKF_INS.accLPFcoef) +
-		(ay - QEKF_INS.AccelBias[1]) * accel_dt / (QEKF_INS.dt + QEKF_INS.accLPFcoef);
+		ay * accel_dt / (QEKF_INS.dt + QEKF_INS.accLPFcoef);
 	QEKF_INS.Accel[2] =
 		QEKF_INS.Accel[2] * QEKF_INS.accLPFcoef / (accel_dt + QEKF_INS.accLPFcoef) +
-		(az - QEKF_INS.AccelBias[2]) * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
+		az * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
 
 	// set z,单位化重力加速度向量
 	accelInvNorm = invSqrt(QEKF_INS.Accel[0] * QEKF_INS.Accel[0] +
@@ -210,11 +187,9 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	}
 	// set Q R,过程噪声和观测噪声矩阵
 	QEKF_INS.IMU_QuaternionEKF.Q_data[0] = QEKF_INS.Q1 * QEKF_INS.dt;
-	QEKF_INS.IMU_QuaternionEKF.Q_data[7] = QEKF_INS.Q1 * QEKF_INS.dt;
-	QEKF_INS.IMU_QuaternionEKF.Q_data[14] = QEKF_INS.Q1 * QEKF_INS.dt;
-	QEKF_INS.IMU_QuaternionEKF.Q_data[21] = QEKF_INS.Q1 * QEKF_INS.dt;
-	QEKF_INS.IMU_QuaternionEKF.Q_data[28] = QEKF_INS.Q2 * QEKF_INS.dt;
-	QEKF_INS.IMU_QuaternionEKF.Q_data[35] = QEKF_INS.Q2 * QEKF_INS.dt;
+	QEKF_INS.IMU_QuaternionEKF.Q_data[5] = QEKF_INS.Q1 * QEKF_INS.dt;
+	QEKF_INS.IMU_QuaternionEKF.Q_data[10] = QEKF_INS.Q1 * QEKF_INS.dt;
+	QEKF_INS.IMU_QuaternionEKF.Q_data[15] = QEKF_INS.Q1 * QEKF_INS.dt;
 	QEKF_INS.IMU_QuaternionEKF.R_data[0] = QEKF_INS.R;
 	QEKF_INS.IMU_QuaternionEKF.R_data[4] = QEKF_INS.R;
 	QEKF_INS.IMU_QuaternionEKF.R_data[8] = QEKF_INS.R;
@@ -226,27 +201,25 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 #if CONFIG_AUTO_PROBE_GYRO_BIAS
 	if (QEKF_INS.StableFlag) {
 		// We update gyro bias with a low pass filter
-		QEKF_INS.GyroBias[0] = QEKF_INS.GyroBias[0] * 0.9992f + gx * 0.0008f;
-		QEKF_INS.GyroBias[1] = QEKF_INS.GyroBias[1] * 0.9992f + gy * 0.0008f;
-		QEKF_INS.GyroBias[2] = QEKF_INS.GyroBias[2] * 0.9992f + gz * 0.0008f;
-		float bias[3];
+		if (QEKF_INS.UpdateCount == 0) {
+			QEKF_INS.GyroBias[0] = gx;
+			QEKF_INS.GyroBias[1] = gy;
+			QEKF_INS.GyroBias[2] = gz;
+		}
+		QEKF_INS.GyroBias[0] = QEKF_INS.GyroBias[0] * 0.99995f + gx * 0.00005f;
+		QEKF_INS.GyroBias[1] = QEKF_INS.GyroBias[1] * 0.99995f + gy * 0.00005f;
+		QEKF_INS.GyroBias[2] = QEKF_INS.GyroBias[2] * 0.99995f + gz * 0.00005f;
 #ifndef PHY_G
 		QEKF_INS.g = QEKF_INS.g * 0.992f + NormOf3d(acc) * 0.008f;
 #else
 		QEKF_INS.g = PHY_G;
 #endif // PHY_G
-		CalcBias(QEKF_INS.q, acc, QEKF_INS.g, bias);
-		QEKF_INS.AccelBias[0] = QEKF_INS.AccelBias[0] * 0.992f + bias[0] * 0.008f;
-		QEKF_INS.AccelBias[1] = QEKF_INS.AccelBias[1] * 0.992f + bias[1] * 0.008f;
-		QEKF_INS.AccelBias[2] = QEKF_INS.AccelBias[2] * 0.992f + bias[2] * 0.008f;
+       // CalcBias(QEKF_INS.q, acc, QEKF_INS.g, bias);
+       // QEKF_INS.AccelBias[0] = QEKF_INS.AccelBias[0] * 0.992f + bias[0] * 0.008f;
+       // QEKF_INS.AccelBias[1] = QEKF_INS.AccelBias[1] * 0.992f + bias[1] * 0.008f;
+       // QEKF_INS.AccelBias[2] = QEKF_INS.AccelBias[2] * 0.992f + bias[2] * 0.008f;
 	}
 #endif // CONFIG_AUTO_PROBE_GYRO_BIAS
-
-#if !DT_HAS_CHOSEN(ares_bias) && !CONFIG_AUTO_PROBE_GYRO_BIAS
-	QEKF_INS.GyroBias[0] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[4];
-	QEKF_INS.GyroBias[1] = QEKF_INS.IMU_QuaternionEKF.FilteredValue[5];
-	QEKF_INS.GyroBias[2] = 0; // 大部分时候z轴通天,无法观测yaw的漂移
-#endif                            // DT_HAS_CHOSEN(ares_bias)
 
 	// 调用kalman_filter.c封装好的函数,注意几个User_Funcx_f的调用
 	Kalman_Filter_Update(&QEKF_INS.IMU_QuaternionEKF);

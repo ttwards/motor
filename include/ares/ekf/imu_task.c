@@ -143,10 +143,11 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		sensor_sample_fetch(accel_dev);
 		IMU_temp_read(accel_dev);
 		// IMU_temp_pwm_set(accel_dev);
-		printk("Current Temp: %.2f, PWM: %.2f\n", current_temp, temp_pwm_output);
+		printk("Current Temp: %.2f, PWM: 100%%\n", (double)current_temp);
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
+	int sample_cnt = 0;
 	for (int i = 0; i < 1000; ++i) {
 		sensor_sample_fetch(accel_dev);
 		sensor_sample_fetch(gyro_dev);
@@ -155,30 +156,22 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		acc[X] = sensor_value_to_float(&accel_data[X]);
 		acc[Y] = sensor_value_to_float(&accel_data[Y]);
 		acc[Z] = sensor_value_to_float(&accel_data[Z]);
-		gyro[X] = sensor_value_to_float(&gyro_data[X]);
-		gyro[Y] = sensor_value_to_float(&gyro_data[Y]);
-		gyro[Z] = sensor_value_to_float(&gyro_data[Z]);
+
 		float g = sqrtf(acc[X] * acc[X] + acc[Y] * acc[Y] + acc[Z] * acc[Z]);
-		float gyro_norm = sqrtf(gyro[X] * gyro[X] + gyro[Y] * gyro[Y] + gyro[Z] * gyro[Z]);
-		if (fabsf(g - PHY_G) > 0.225f || gyro_norm > 0.05f) {
-			printk("Unexpected accel data!! Please stay still. Accel=%.4f\n",
-			       (double)g);
-		} else {
-			acc_init[X] += acc[X];
-			acc_init[Y] += acc[Y];
-			acc_init[Z] += acc[Z];
-			QEKF_INS.GyroBias[X] += gyro[X];
-			QEKF_INS.GyroBias[Y] += gyro[Y];
-			QEKF_INS.GyroBias[Z] += gyro[Z];
-			QEKF_INS.UpdateCount++;
+		if (fabsf(g - PHY_G) > 0.16f) {
+			printk("Not stable: %f\n", g);
+			continue;
 		}
-		if (QEKF_INS.UpdateCount == 200) {
+		if (sample_cnt == 200) {
 			break;
 		}
-		if (i % 200 == 0) {
-			IMU_temp_read(accel_dev);
-			IMU_temp_pwm_set(accel_dev);
-		}
+		acc_init[X] += acc[X];
+		acc_init[Y] += acc[Y];
+		acc_init[Z] += acc[Z];
+		gyro[X] += sensor_value_to_float(&gyro_data[X]);
+		gyro[Y] += sensor_value_to_float(&gyro_data[Y]);
+		gyro[Z] += sensor_value_to_float(&gyro_data[Z]);
+		sample_cnt++;
 
 		k_msleep(1);
 	}
@@ -191,9 +184,15 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	QEKF_INS.g = PHY_G;
 #endif // PHY_G
 
-	for (uint8_t i = 0; i < 3; ++i) {
-		acc_init[i] /= QEKF_INS.UpdateCount;
-		QEKF_INS.GyroBias[i] /= QEKF_INS.UpdateCount;
+	if (sample_cnt == 0) {
+		acc_init[X] = 0;
+		acc_init[Y] = 0;
+		acc_init[Z] = PHY_G;
+	} else {
+		for (uint8_t i = 0; i < 3; ++i) {
+			acc_init[i] /= sample_cnt;
+			QEKF_INS.GyroBias[i] = gyro[i] / sample_cnt;
+		}
 	}
 
 	accel[X] = acc_init[X];
@@ -201,6 +200,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	accel[Z] = acc_init[Z];
 
 	Norm3d(acc_init);
+
 	// 计算原始加速度矢量和导航系重力加速度矢量的夹角
 	float angle = acosf(Dot3d(acc_init, gravity_norm));
 	Cross3d(acc_init, gravity_norm, axis_rot);
@@ -210,6 +210,8 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		init_q4[i + 1] =
 			axis_rot[i] * sinf(angle / 2.0f); // 轴角公式,第三轴为0(没有z轴分量)
 	}
+	printk("Init Quaternion: %f, %f, %f, %f\n", init_q4[0], init_q4[1], init_q4[2], init_q4[3]);
+	printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
 }
 
 static void IMU_Sensor_trig_handler(const struct device *dev, const struct sensor_trigger *trigger)
