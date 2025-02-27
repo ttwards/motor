@@ -30,6 +30,8 @@ extern "C" {
 #define CHASSIS_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)        \
 	DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
 
+#define CHASSIS_WHEEL_COUNT DT_PROP_LEN(DT_INST(0, ares_chassis), wheels)
+
 typedef struct {
 	float speedX;
 	float speedY;
@@ -60,8 +62,8 @@ typedef struct {
 
 	bool angleControl;
 
-	float angle_to_center[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
-	float distance_to_center[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
+	float angle_to_center[CHASSIS_WHEEL_COUNT];
+	float distance_to_center[CHASSIS_WHEEL_COUNT];
 
 	chassis_status_t chassis_status;
 
@@ -73,9 +75,9 @@ typedef struct {
 
 typedef struct {
 	struct pid_data *angle_pid;
-	const struct device *wheels[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
-	float pos_X_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
-	float pos_Y_offset[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT];
+	const struct device *wheels[CHASSIS_WHEEL_COUNT];
+	float pos_X_offset[CHASSIS_WHEEL_COUNT];
+	float pos_Y_offset[CHASSIS_WHEEL_COUNT];
 } chassis_cfg_t;
 
 /**
@@ -143,10 +145,10 @@ static inline chassis_status_t *z_impl_chassis_get_status(const struct device *d
 	return NULL;
 }
 
-static void chassis_set_sensor_zbus(const struct device *dev, const struct zbus_channel *chan)
+static void chassis_update_sensor(const struct device *dev, struct pos_data *pos_data)
 {
 	chassis_data_t *data = dev->data;
-	data->chassis_sensor_zbus = (struct zbus_channel *)chan;
+	zbus_chan_pub(data->chassis_sensor_zbus, &pos_data, K_MSEC(5));
 }
 
 #ifdef __cplusplus

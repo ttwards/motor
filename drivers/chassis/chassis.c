@@ -31,10 +31,19 @@ ZBUS_MSG_SUBSCRIBER_DEFINE(chassis_sensor_msg_suscriber);
 #define M_PI_2 1.57079632679489661923f
 #endif
 
+ZBUS_CHAN_DEFINE(chassis_sensor_zbus,                          /* Name */
+		 struct pos_data,                              /* Message type */
+		 NULL,                                         /* Validator */
+		 NULL,                                         /* User Data */
+		 ZBUS_OBSERVERS(chassis_sensor_msg_suscriber), /* observers */
+		 ZBUS_MSG_INIT(.Yaw = 0, .accel = {0})         /* Initial value */
+);
+
 int cchassis_init(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
+	data->chassis_sensor_zbus = (struct zbus_channel *)&chassis_sensor_zbus;
 	int idx = 0;
 	while (cfg->wheels[idx] != NULL) {
 		float arc;
@@ -97,8 +106,8 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 	// data->targetRollSpeed = 0;
 
 	int idx = 0;
-	float currentSpeedX[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT] = {0};
-	float currentSpeedY[CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT] = {0};
+	float currentSpeedX[CHASSIS_WHEEL_COUNT] = {0};
+	float currentSpeedY[CHASSIS_WHEEL_COUNT] = {0};
 	float currentGyro = 0;
 	while (cfg->wheels[idx] != NULL) {
 		// 由于我们的轮电机使用的是速度环PID控制
@@ -165,43 +174,43 @@ void cchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
 
-	for (int i = 0; i < CONFIG_CHASSIS_MAX_STEERWHHEL_COUNT; i++) {
+	for (int i = 0; i < CHASSIS_WHEEL_COUNT; i++) {
 		if (cfg->wheels[i] == NULL) {
 			break;
 		}
 		wheel_set_static(cfg->wheels[i], 90.0f);
 	}
 
-	k_msleep(1000);
-
 	struct pos_data pos = {0};
 
 	while (true) {
-		if (data->chassis_sensor_zbus != NULL) {
-			zbus_sub_wait_msg(&chassis_sensor_msg_suscriber, &chan, &pos, K_MSEC(1));
-			if (data->chassis_sensor_zbus != chan) {
-				continue;
+		zbus_sub_wait_msg(&chassis_sensor_msg_suscriber, &chan, &pos, K_FOREVER);
+		if (data->chassis_sensor_zbus != chan) {
+			continue;
+		}
+
+		if (!isnan(pos.Yaw)) {
+			data->currentYaw = pos.Yaw;
+		}
+
+		if (data->angleControl) {
+			float delta_Yaw = data->targetYaw - data->currentYaw;
+			delta_Yaw = fmodf(delta_Yaw, 360.0f);
+			if (delta_Yaw > 180) {
+				delta_Yaw -= 360.0f;
+			} else if (delta_Yaw < -180) {
+				delta_Yaw += 360.0f;
 			}
-		} else {
-			k_msleep(1);
-		}
-		data->currentYaw = pos.Yaw;
-
-		float delta_Yaw = data->targetYaw - data->currentYaw;
-		delta_Yaw = fmodf(delta_Yaw, 360.0f);
-		if (delta_Yaw > 180) {
-			delta_Yaw -= 360.0f;
-		} else if (delta_Yaw < -180) {
-			delta_Yaw += 360.0f;
-		}
-		if (fabsf(delta_Yaw) > 0.8f) {
-			data->pid_input = delta_Yaw;
-		} else {
-			data->pid_input = 0;
+			if (fabsf(delta_Yaw) > 0.8f) {
+				data->pid_input = delta_Yaw;
+			} else {
+				data->pid_input = 0;
+			}
 		}
 
-		printk("Yaw: %f, targetYaw: %f, delta_Yaw: %f\n", data->currentYaw, data->targetYaw,
-		       delta_Yaw);
+		// printk("Yaw: %f, targetYaw: %f, delta_Yaw: %f\n", data->currentYaw,
+		// data->targetYaw,
+		//        delta_Yaw);
 		if ((pos.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
 		}

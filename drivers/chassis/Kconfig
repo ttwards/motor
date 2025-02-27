@@ -15,11 +15,6 @@ module = CHASSIS
 module-str = CHASSIS
 source "subsys/logging/Kconfig.template.log_config"
 
-config CHASSIS_MAX_STEERWHHEL_COUNT
-    int "CHASSIS MAX STEERWHHEL COUNT"
-    help
-      Add support for dji motors
-
 config CHASSIS_LOG_LEVEL
     int "Motor log level"
     default 4
