@@ -41,6 +41,9 @@ extern "C" {
 
 #define RPM2RADPS(rpm)   ((rpm) * 0.104719755f)
 #define RADPS2RPM(radps) ((radps) * 9.54929659f)
+
+#define RLS_alpha   0.9975f
+#define Alpha_alpha 0.9975f
 /**
  * @brief 电机工作模式枚举
  *
@@ -81,9 +84,12 @@ struct motor_driver_config {
 	struct pid_data *pid_datas[4];
 };
 
+typedef float (*motor_slip_cb_t)(const struct device *dev);
+
 struct motor_driver_data {
 	float angle;
 	float rpm;
+	float alpha;
 	float torque;
 	float temperature;
 	int round_cnt;
@@ -91,8 +97,62 @@ struct motor_driver_data {
 	float speed_limit[2];
 	float torque_limit[2];
 
+	float sum_T;
+	float sum_alpha;
+	float sum_Talpha;
+	float sum_alpha_square;
+	float RLS_k;
+	float RLS_b;
+	float cusum_accumulator;
+	float cusum_max;
+	uint16_t sample_cnt;
+
+	motor_slip_cb_t slip_cb;
+
 	enum motor_mode mode;
 };
+
+static inline bool RLS_CUSUM_update(struct motor_driver_data *data)
+{
+	float torque = data->torque;
+	float alpha = data->alpha;
+	if (data->torque < 0) {
+		torque = -data->torque;
+		alpha = -data->alpha;
+	}
+	// 更新指数加权统计量
+	data->sum_T = RLS_alpha * data->sum_T + torque;
+	data->sum_alpha = RLS_alpha * data->sum_alpha + alpha;
+	data->sum_Talpha = RLS_alpha * data->sum_Talpha + torque * alpha;
+	data->sum_alpha_square = RLS_alpha * data->sum_alpha_square + alpha * alpha;
+
+	// 计算线性回归参数
+	float denominator =
+		data->sum_alpha_square -
+		(data->sum_alpha * data->sum_alpha) / (1 / (1 - alpha)); // 等效样本数=1/(1-alpha)
+	if (fabsf(denominator) > 1e-6f) {                                // 避免除零
+		data->RLS_k =
+			(data->sum_Talpha - data->sum_T * data->sum_alpha / (1 / (1 - alpha))) /
+			denominator;
+		data->RLS_b = (data->sum_T - data->RLS_k * data->sum_alpha) / (1 / (1 - alpha));
+	}
+
+	// 计算残差
+	float residual = torque - (data->RLS_k * alpha + data->RLS_b);
+
+	// 更新CUSUM统计量
+	data->cusum_accumulator += residual;
+	data->cusum_accumulator = fmaxf(data->cusum_accumulator, 0); // 仅关注正向累积
+	data->cusum_max = fmaxf(data->cusum_max, data->cusum_accumulator);
+
+	// 触发条件（阈值需实验确定）
+	if (data->cusum_max > 5.0f) {        // 示例阈值
+		data->cusum_accumulator = 0; // 重置检测器
+		data->cusum_max = 0;
+		return true;
+	}
+	return false;
+}
 /**
  * @typedef motor_api_stat_speed_t
  * @brief 获取电机当前速度的回调函数
@@ -398,6 +458,7 @@ static inline void z_impl_motor_limit_torque(const struct device *dev, float max
 #define MOTOR_DT_DRIVER_DATA_GET(node_id)                                                          \
 	{                                                                                          \
 		.angle = 0,                                                                        \
+		.alpha = 0,                                                                        \
 		.rpm = 0,                                                                          \
 		.torque = 0,                                                                       \
 		.temperature = 0,                                                                  \

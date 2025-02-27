@@ -6,6 +6,7 @@
 #include "motor_dji.h"
 #include "zephyr/device.h"
 #include "zephyr/devicetree.h"
+#include "zephyr/drivers/motor.h"
 #include "zephyr/spinlock.h"
 #include "zephyr/toolchain.h"
 #include <string.h>
@@ -274,7 +275,7 @@ int dji_init(const struct device *dev)
 	/*
 	    Each motor find their own controller and write their own data,
 	    which cannot be done at the first init because the other motors have not
-	    been instantiated.
+	    been initialized.
 	*/
 	if (dev) {
 		const struct dji_motor_config *cfg = dev->config;
@@ -289,7 +290,7 @@ int dji_init(const struct device *dev)
 		data->online = true;
 		for (int i = 0;
 		     i < sizeof(cfg->common.pid_datas) / sizeof(cfg->common.pid_datas[0]); i++) {
-			if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+			if (cfg->common.pid_datas[i] == NULL) {
 				if (i > 0) {
 					pid_reg_output(cfg->common.pid_datas[i - 1],
 						       &data->target_torque);
@@ -314,7 +315,7 @@ int dji_init(const struct device *dev)
 						       &data->target_torque);
 				}
 			} else {
-				LOG_ERR("Unsupported motor mode");
+				LOG_ERR("Unsupported motor mode: %s", cfg->common.capabilities[i]);
 				return -1;
 			}
 			pid_reg_time(cfg->common.pid_datas[i], &(data->curr_time),
@@ -521,11 +522,28 @@ static void motor_calc(const struct device *dev)
 	// Add up to avoid circular overflow
 	proceed_delta_degree(dev_temp);
 
-	data_temp->common.rpm = data_temp->RAWrpm * convert[data_temp->convert_num][SPEED2RPM] /
-				config_temp->gear_ratio;
+	if (data_temp->common.sample_cnt < 500) {
+		data_temp->common.sample_cnt++;
+	}
+	float rpm = data_temp->RAWrpm * convert[data_temp->convert_num][SPEED2RPM] /
+		    config_temp->gear_ratio;
+	if (data_temp->common.sample_cnt == 1) {
+		data_temp->common.alpha = rpm - data_temp->common.rpm;
+	}
+	data_temp->common.alpha = (1 - Alpha_alpha) * data_temp->common.alpha +
+				  Alpha_alpha * (rpm - data_temp->common.rpm);
+	data_temp->common.rpm = rpm;
 	data_temp->common.torque = data_temp->RAWcurrent *
 				   convert[data_temp->convert_num][CURRENT2TORQUE] *
 				   config_temp->gear_ratio;
+
+	if (RLS_CUSUM_update(&data_temp->common)) {
+		// LOG_ERR("Wheel is slipping");
+		if (data_temp->common.slip_cb != NULL) {
+			data_temp->common.slip_cb(dev_temp);
+		}
+	}
+
 	for (int i = data_temp->current_mode_index;
 	     i < SIZE_OF_ARRAY(config_temp->common.capabilities); i++) {
 		if (config_temp->common.pid_datas[i]->pid_dev == NULL) {
