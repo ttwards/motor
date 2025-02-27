@@ -25,18 +25,21 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 /* Devicetree */
 #define CANBUS_NODE DT_CHOSEN(zephyr_canbus)
 #define CAN1_NODE   DT_INST(0, vnd_canbus)
-#define MOTOR1_NODE DT_INST(0, dm_motor)
+#define MOTOR1_NODE DT_INST(0, dji_motor)
+#define MOTOR2_NODE DT_INST(1, dji_motor)
 
 #define FEEDBACK_STACK_SIZE 1536
 
 const struct device *can_dev = DEVICE_DT_GET(CANBUS_NODE);
 const struct device *motor1 = DEVICE_DT_GET(MOTOR1_NODE);
+const struct device *motor2 = DEVICE_DT_GET(MOTOR2_NODE);
 
 /* CAN Feedback to console*/
 void console_feedback(void *arg1, void *arg2, void *arg3)
 {
 	for (int i = 0; i < 10000; i++) {
-		motor_set_speed(motor1, i);
+		motor_set_speed(motor1, 200);
+		motor_set_speed(motor2, 200);
 		LOG_INF("Speed: %.2f, Set: %.2f", (double)motor_get_speed(motor1), (double)i);
 		k_msleep(5);
 	}
@@ -50,7 +53,6 @@ int main(void)
 
 	k_msleep(1000);
 	motor_control(motor1, ENABLE_MOTOR);
-	motor_set_mode(motor1, VO);
 	while (1) {
 		k_msleep(1500);
 	}
