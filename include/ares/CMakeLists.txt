@@ -1,3 +1,3 @@
 add_subdirectory_ifdef(CONFIG_EKF_LIB ekf)
-add_subdirectory_ifdef(COFNIG_VOFA_LIB vofa)
+add_subdirectory_ifdef(CONFIG_VOFA_LIB vofa)
 add_subdirectory(board)

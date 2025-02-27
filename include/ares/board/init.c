@@ -7,6 +7,7 @@
 #include <zephyr/drivers/led.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/spi.h>
 #include <zephyr/kernel.h>
 #include <zephyr/kernel/thread.h>
 #include <zephyr/logging/log.h>
@@ -30,7 +31,7 @@ void pwr_init(void)
 }
 
 #define PWR_INIT pwr_init();
-#define LED_INIT
+#define LED_INIT led_init();
 
 #endif /* CONFIG_BOARD_DM_MC02 */
 
@@ -82,69 +83,85 @@ void pwr_init(void)
 
 #define RGB(_r, _g, _b) ((struct led_rgb){.r = (_r), .g = (_g), .b = (_b)})
 
-void led_set_rgb(struct led_rgb *color)
-{
-#ifdef CONFIG_BOARD_DM_MC02
-	led_strip_update_rgb(strip, color, 2);
-#endif /* CONFIG_BOARD_DM_MC02 */
+// static inline void led_set_rgb(struct led_rgb *color)
+// {
+// #ifdef CONFIG_BOARD_DM_MC02
+// 	led_strip_update_rgb(strip, color, 1);
+// 	// struct spi_config config;
+// 	// const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(spi6));
 
-#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_A
-	// led_set_brightness(led_green, 1, color->g);
-	// led_set_brightness(led_red, 1, color->r);
-#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_A */
+// 	// config.frequency = 9000000;
+// 	// config.operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8);
+// 	// config.slave = 0;
 
-#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
-	// led_set_brightness(led_blue, 1, color->b);
-	// led_set_brightness(led_green, 1, color->g);
-	// led_set_brightness(led_red, 1, color->r);
-#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_C */
-}
+// 	// uint8_t buff[] = {0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0xF8, 0xF8, 0xF8, 0xF8,
+// 	// 		  0xF8, 0xF8, 0xF8, 0xF8, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0, 0XE0};
+// 	// int len = 24 * sizeof(buff[0]);
 
-void led_serivce_func(void *p1, void *p2, void *p3)
-{
-	ARG_UNUSED(p1);
-	ARG_UNUSED(p2);
-	ARG_UNUSED(p3);
+// 	// struct spi_buf tx_buf = {.buf = buff, .len = len};
+// 	// struct spi_buf_set tx_bufs = {.buffers = &tx_buf, .count = 1};
 
-	struct k_thread_runtime_stats idle_stats_old, idle_stats_new;
-	uint64_t idle_cycles_diff;
-	uint64_t total_cycles_diff;
-	struct led_rgb color;
+// 	// int ret = spi_write(dev, &config, &tx_bufs);
+// #endif /* CONFIG_BOARD_DM_MC02 */
 
-	while (1) {
-		// 获取统计数据
-		k_thread_runtime_stats_all_get(&idle_stats_old);
-		k_msleep(1000);
-		k_thread_runtime_stats_all_get(&idle_stats_new);
+// #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_A
+// 	// led_set_brightness(led_green, 1, color->g);
+// 	// led_set_brightness(led_red, 1, color->r);
+// #endif /* CONFIG_BOARD_ROBOMASTER_BOARD_A */
 
-		// 计算CPU使用率 (0-100)
-		idle_cycles_diff = idle_stats_new.idle_cycles - idle_stats_old.idle_cycles;
-		total_cycles_diff =
-			idle_stats_new.execution_cycles - idle_stats_old.execution_cycles;
-		float cpu_usage = 100.0f * (1.0f - ((float)idle_cycles_diff / total_cycles_diff));
+// #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
+// 	// led_set_brightness(led_blue, 1, color->b);
+// 	// led_set_brightness(led_green, 1, color->g);
+// 	// led_set_brightness(led_red, 1, color->r);
+// #endif /* CONFIG_BOARD_ROBOMASTER_BOARD_C */
+// }
 
-		// 映射到RGB值 (红色表示高负载，绿色表示低负载)
-		uint8_t red = (uint8_t)((cpu_usage / 100.0f) * 0x0f);
-		uint8_t green = (uint8_t)((1.0f - cpu_usage / 100.0f) * 0x0f);
+// void led_serivce_func(void *p1, void *p2, void *p3)
+// {
+// 	ARG_UNUSED(p1);
+// 	ARG_UNUSED(p2);
+// 	ARG_UNUSED(p3);
 
-		color = RGB(red, green, 0);
-		led_set_rgb(&color);
+// 	struct k_thread_runtime_stats idle_stats_old, idle_stats_new;
+// 	uint64_t idle_cycles_diff;
+// 	uint64_t total_cycles_diff;
+// 	struct led_rgb color;
 
-		printk("CPU: %.1f%%, RGB: %02x%02x00\n", (double)cpu_usage, red, green);
-	}
-}
+// 	while (1) {
+// 		// 获取统计数据
+// 		k_thread_runtime_stats_all_get(&idle_stats_old);
+// 		k_msleep(1000);
+// 		k_thread_runtime_stats_all_get(&idle_stats_new);
+
+// 		// 计算CPU使用率 (0-100)
+// 		// idle_cycles_diff = idle_stats_new.idle_cycles - idle_stats_old.idle_cycles;
+// 		// total_cycles_diff =
+// 		// 	idle_stats_new.execution_cycles - idle_stats_old.execution_cycles;
+// 		// float cpu_usage = 100.0f * (1.0f - ((float)idle_cycles_diff /
+// 		// total_cycles_diff));
+
+// 		// // 映射到RGB值 (红色表示高负载，绿色表示低负载)
+// 		// uint8_t red = (uint8_t)((cpu_usage / 100.0f) * 0x0f);
+// 		// uint8_t green = (uint8_t)((1.0f - cpu_usage / 100.0f) * 0x0f);
+
+// 		// color = RGB(red, green, 0);
+// 		// led_set_rgb(&color);
+
+// 		// printk("CPU: %.1f%%, RGB: %02x%02x00\n", (double)cpu_usage, red, green);
+// 	}
+// }
 
 // static K_THREAD_STACK_DEFINE(led_serivce_stack, 1024); // 定义线程栈
 // static struct k_thread led_service_thread;
-// void led_init(void)
-// {
-// 	// struct led_rgb color = RGB(0x00, 0x0f, 0x0f);
-// 	// led_set_rgb(&color);
-// 	// k_sleep(K_MSEC(1000));
-// 	// k_thread_create(&led_service_thread, led_serivce_stack,
-// 	// 		K_THREAD_STACK_SIZEOF(led_serivce_stack), led_serivce_func, NULL, NULL,
-// 	// 		NULL, -1, 0, K_NO_WAIT);
-// }
+void led_init(void)
+{
+	struct led_rgb color = RGB(0x4F, 0x4F, 0x4F);
+	// led_set_rgb(&color);
+	k_sleep(K_MSEC(300));
+	// k_thread_create(&led_service_thread, led_serivce_stack,
+	// 		K_THREAD_STACK_SIZEOF(led_serivce_stack), led_serivce_func, NULL, NULL,
+	// 		NULL, -1, 0, K_NO_WAIT);
+}
 
 void board_init(void)
 {
