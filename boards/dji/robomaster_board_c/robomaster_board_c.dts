@@ -162,7 +162,7 @@
 &usart6 {
 	pinctrl-0 = <&usart6_tx_pg14 &usart6_rx_pg9>;
 	pinctrl-names = "default";
-	current-speed = <4000000>;
+	current-speed = <2500000>;
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";
@@ -175,10 +175,9 @@ zephyr_udc0: &usbotg_fs {
 	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
 	pinctrl-names = "default";
 	status = "okay";
-
-	// cdc_acm_uart0: cdc_acm_uart {
-	// 	compatible = "zephyr,cdc-acm-uart";
-	// };
+	cdc_acm_uart0: cdc_acm_uart {
+		compatible = "zephyr,cdc-acm-uart";
+	};
 };
 
 &can1 {
