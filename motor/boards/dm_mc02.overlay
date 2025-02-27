@@ -5,27 +5,56 @@
 		id = <1>;
 		rx_id = <0x201>;
 		tx_id = <0x200>;
-		gear_ratio = <1920>;
+		gear_ratio = "15.76";
 		status = "okay";
 		can_channel = <&canbus1>;
-		controllers = <&angle_pid_1 &speed_pid_1>;
+		controllers = <&wheel_angle_pid &wheel_speed_pid>;
+		capabilities = "angle", "speed";
+	};
+	motor_steer0: motor_steer0{
+		compatible = "dji,motor";
+		is_gm6020;
+		id = <5>;
+		rx_id = <0x209>;
+		tx_id = <0x2FF>;
+		gear_ratio = "1.0";
+		status = "okay";
+		can_channel = <&canbus1>;
+		controllers = <&steer_angle_pid &steer_speed_pid>;
 		capabilities = "angle", "speed";
 	};
 
 	pid {
-		angle_pid_1: angle_pid_1 {
+		wheel_speed_pid: wheel_speed_pid {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			k_p = <700>;
-			k_i = <3>;
-			k_d = <800>;
+			k_p = "2.65";
+			k_d = "60";
+			detri_lpf = "0.985";
 		};
-		speed_pid_1: speed_pid_1 {
+
+		wheel_angle_pid: wheel_angle_pid {
 			#controller-cells = <0>;
 			compatible = "pid,single";
-			k_p = <180>;
-			k_i = <20>;
-			k_d = <20>;
+			k_p = "3";
+			k_d = "320";
+			detri_lpf = "0.985";
+		};
+
+		steer_speed_pid: steer_speed_pid {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = "0.0195";
+			k_d = "4.85";
+			detri_lpf = "0.95";
+		};
+
+		steer_angle_pid: steer_angle_pid {
+			#controller-cells = <0>;
+			compatible = "pid,single";
+			k_p = "2.0";
+			k_d = "0";
+			detri_lpf = "0.9985";
 		};
 	};
 	sbus0: sbus0 {

@@ -17,13 +17,14 @@
 	compatible = "damiao,dm-mc02";
 
 	chosen {
-		zephyr,console = &uart7;
-		zephyr,shell-uart = &uart7;
+		zephyr,console = &usart10;
+		zephyr,shell-uart = &usart10;
 		zephyr,sram = &sram0;
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
 		zephyr,canbus = &fdcan1;
-		zephyr,ccm = &ccm0;
+		zephyr,dtcm = &dtcm;
+		zephyr,itcm = &itcm;
 		sbus,uart = &uart5;
 	};
 
@@ -201,9 +202,6 @@
 	pinctrl-names = "default";
 	current-speed = <115200>;
 	status = "okay";
-	data-bits = <8>;
-	stop-bits = "1";
-	hw-flow-control;
 };
 
 &usart10 {
@@ -215,15 +213,15 @@
 	stop-bits = "1";
 };
 
-// zephyr_udc0: &usbotg_hs {
-// 	pinctrl-0 = <&usb_otg_hs_dp_pa12 &usb_otg_hs_dm_pa11>;
-// 	pinctrl-names = "default";
-// 	status = "okay";
+zephyr_udc0: &usbotg_hs {
+	pinctrl-0 = <&usb_otg_hs_dp_pa12 &usb_otg_hs_dm_pa11>;
+	pinctrl-names = "default";
+	status = "okay";
 
-// 	cdc_acm_uart0: cdc_acm_uart {
-// 		compatible = "zephyr,cdc-acm-uart";
-// 	};
-// };
+	cdc_acm_uart: cdc_acm_uart {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
 
 &fdcan1 {
 	status = "okay";
@@ -286,23 +284,23 @@
 
 &spi6 {
 	status = "okay";
-
 	pinctrl-0=<&spi6_mosi_pa7>;
-
 	pinctrl-names="default";
-
+	dmas = <&dmamux2 0 11 STM32_DMA_PERIPH_RX
+			&dmamux2 1 12 STM32_DMA_PERIPH_TX>;
+	dma-names = "rx", "tx";
 	led_strip: ws2812@0 {
 		compatible = "worldsemi,ws2812-spi";
-
-		chain-length = <2>;
-
 		reg = <0>;
-		spi-max-frequency = <7000000U>;
+		spi-max-frequency = <9000000>;
 
-		color-mapping =	<LED_COLOR_ID_RED
-						 LED_COLOR_ID_GREEN
-						 LED_COLOR_ID_BLUE>;
-		spi-one-frame = <WS2812C_ONE_FRAME>;
-		spi-zero-frame = <WS2812C_ZERO_FRAME>;
+		chain-length = <1>;
+		color-mapping =	<LED_COLOR_ID_GREEN>,
+			<LED_COLOR_ID_RED>,
+			<LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0XF8>;
+		spi-zero-frame = <0XE0>;
+
+		reset-delay = <250>;
 	};
 };
