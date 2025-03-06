@@ -115,9 +115,9 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 		QEKF_INS.Gyro[2] = gz;
 	}
 
-	QEKF_INS.Gyro[0] = 0.008f * (gx - QEKF_INS.GyroBias[0]) + 0.992f * QEKF_INS.Gyro[0];
-	QEKF_INS.Gyro[1] = 0.008f * (gy - QEKF_INS.GyroBias[1]) + 0.992f * QEKF_INS.Gyro[1];
-	QEKF_INS.Gyro[2] = 0.008f * (gz - QEKF_INS.GyroBias[2]) + 0.992f * QEKF_INS.Gyro[2];
+	QEKF_INS.Gyro[0] = gx - QEKF_INS.GyroBias[0];
+	QEKF_INS.Gyro[1] = gy - QEKF_INS.GyroBias[1];
+	QEKF_INS.Gyro[2] = gz - QEKF_INS.GyroBias[2];
 
 	// set F
 	halfgxdt = 0.5f * QEKF_INS.Gyro[0] * gyro_dt;
@@ -180,8 +180,12 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	// 如果角速度小于阈值且加速度处于设定范围内,认为运动稳定,加速度可以用于修正角速度
 	// 稍后在最后的姿态更新部分会利用StableFlag来确定
 	float acc[3] = {ax, ay, az};
-	if (QEKF_INS.gyro_norm < 0.002f && fabsf(NormOf3d(acc) - 9.8f) < 0.25f) {
+	bool BiasFlag = 0;
+	if (fabsf(NormOf3d(acc) - 9.8f) < 0.5f) {
 		QEKF_INS.StableFlag = 1;
+		if (QEKF_INS.gyro_norm < 0.2f && fabsf(NormOf3d(acc) - 9.8f) < 0.35f) {
+			BiasFlag = true;
+		}
 	} else {
 		QEKF_INS.StableFlag = 0;
 	}
@@ -199,16 +203,16 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 #endif // DT_HAS_CHOSEN(ares_bias) && CONFIG_AUTO_PROBE_BIAS
 
 #if CONFIG_AUTO_PROBE_GYRO_BIAS
-	if (QEKF_INS.StableFlag) {
+	if (BiasFlag) {
 		// We update gyro bias with a low pass filter
 		if (QEKF_INS.UpdateCount == 0) {
 			QEKF_INS.GyroBias[0] = gx;
 			QEKF_INS.GyroBias[1] = gy;
 			QEKF_INS.GyroBias[2] = gz;
 		}
-		QEKF_INS.GyroBias[0] = QEKF_INS.GyroBias[0] * 0.99995f + gx * 0.00005f;
-		QEKF_INS.GyroBias[1] = QEKF_INS.GyroBias[1] * 0.99995f + gy * 0.00005f;
-		QEKF_INS.GyroBias[2] = QEKF_INS.GyroBias[2] * 0.99995f + gz * 0.00005f;
+		QEKF_INS.GyroBias[0] = QEKF_INS.GyroBias[0] * 0.9995f + gx * 0.0005f;
+		QEKF_INS.GyroBias[1] = QEKF_INS.GyroBias[1] * 0.9995f + gy * 0.0005f;
+		QEKF_INS.GyroBias[2] = QEKF_INS.GyroBias[2] * 0.9995f + gz * 0.0005f;
 #ifndef PHY_G
 		QEKF_INS.g = QEKF_INS.g * 0.992f + NormOf3d(acc) * 0.008f;
 #else
