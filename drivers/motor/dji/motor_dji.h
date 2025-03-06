@@ -69,7 +69,7 @@ struct dji_motor_data {
 	// RAW DATA
 	uint16_t RAWangle;
 	uint16_t RAWprev_angle;
-	int32_t RAWcurrent;
+	int16_t RAWcurrent;
 	int16_t RAWrpm;
 	int8_t RAWtemp;
 	float angle_add;

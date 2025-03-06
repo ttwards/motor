@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "motor_dji.h"
+#include "syscalls/can.h"
 #include "zephyr/device.h"
 #include "zephyr/devicetree.h"
+#include "zephyr/drivers/can.h"
 #include "zephyr/drivers/motor.h"
 #include "zephyr/spinlock.h"
+#include "zephyr/sys/util.h"
 #include "zephyr/toolchain.h"
 #include <string.h>
 #include <math.h>
@@ -46,7 +49,7 @@ const struct device *can_devices[] = {
 			},                                                                         \
 	}
 
-static int frames_id(int tx_id)
+static int frameID_to_index(int tx_id)
 {
 	if (tx_id == 0x200) {
 		return 0;
@@ -62,18 +65,7 @@ static int frames_id(int tx_id)
 	return -1; // Return a default value if no match is found
 }
 
-int get_can_id(const struct device *dev)
-{
-	const struct dji_motor_config *cfg = dev->config;
-	for (int i = 0; i < CAN_COUNT; i++) {
-		if (can_devices[i] == cfg->common.phy) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-static int txframe_id(int frames_id)
+static int index_to_frameID(int frames_id)
 {
 	if (frames_id == 0) {
 		return 0x200;
@@ -112,12 +104,12 @@ struct motor_controller ctrl_structs[CAN_COUNT] = {
 
 static inline motor_id_t canbus_id(const struct device *dev)
 {
-	for (int i = 0; i < MOTOR_COUNT; i++) {
-		if (motor_devices[i] == dev) {
+	for (int i = 0; i < CAN_COUNT; i++) {
+		if (can_devices[i] == dev) {
 			return i;
 		}
 	}
-	return 0;
+	return -1;
 }
 
 static inline motor_id_t motor_id(const struct device *dev)
@@ -280,9 +272,12 @@ int dji_init(const struct device *dev)
 	if (dev) {
 		const struct dji_motor_config *cfg = dev->config;
 		struct dji_motor_data *data = dev->data;
-		uint8_t frame_id = frames_id(cfg->common.tx_id);
+		uint8_t frame_id = frameID_to_index(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
 		data->ctrl_struct->mask[frame_id] |= 1 << id;
+		if (data->ctrl_struct->rx_ids[id]) {
+			LOG_ERR("Conflicting motor id: %d, dev name: %s", id, dev->name);
+		}
 		data->ctrl_struct->rx_ids[id] = cfg->common.rx_id;
 
 		data->ctrl_struct->full_handle.handler = dji_tx_handler;
@@ -353,82 +348,67 @@ int dji_init(const struct device *dev)
 void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data)
 {
 	uint32_t curr_time = k_cycle_get_32();
-	struct motor_controller *ctrl_struct = (struct motor_controller *)user_data;
+	struct device *dev = (struct device *)user_data;
 	struct can_frame rx_frame = *frame;
-	// Suppose it is 3508/2006
-	uint8_t id = (rx_frame.id & 0xF) - 1;
-	// If RX_ID does not match, it should be GM6020
-	if (ctrl_struct->rx_ids[id] != rx_frame.id && id >= 4) {
-		id -= 4;
-	}
-	// It should match, but in case we check again
-	if (ctrl_struct->rx_ids[id] != rx_frame.id) {
-		LOG_ERR("Unknown motor ID: %d, database: %d, received: %d", id,
-			ctrl_struct->rx_ids[id], rx_frame.id);
-		return;
-	}
-	int8_t bus_id = canbus_id(can_dev);
-	if (!ctrl_struct) {
-		return;
-	}
-	struct dji_motor_data *motor_data = ctrl_struct->motor_devs[id]->data;
 
+	struct dji_motor_data *data = dev->data;
+	uint16_t id = motor_id(dev);
+	uint8_t bus_id = canbus_id(can_dev);
 	k_spinlock_key_t key;
-	if (k_spin_trylock(&motor_data->data_input_lock, &key) != 0) {
+	if (k_spin_trylock(&data->data_input_lock, &key) != 0) {
 		return;
 	}
 
-	if (!motor_data) {
+	if (!data) {
 		return;
 	}
-	if (motor_data->missed_times > 3) {
-		motor_data->missed_times = 0;
-		motor_data->online = true;
+	if (data->missed_times > 3) {
+		data->missed_times = 0;
+		data->online = true;
 		const struct dji_motor_config *motor_cfg =
-			(const struct dji_motor_config *)ctrl_struct->motor_devs[id]->config;
-		int8_t frame_id = frames_id(motor_cfg->common.tx_id);
-		ctrl_struct[bus_id].mask[frame_id] ^= 1 << id;
-		LOG_ERR("Motor %d on canbus %d is responding again, resuming...", id,
-			(int)(ctrl_struct - ctrl_structs));
-	} else if (motor_data->missed_times > 0) {
-		motor_data->missed_times--;
+			(const struct dji_motor_config *)dev->config;
+		int8_t frame_id = frameID_to_index(motor_cfg->common.tx_id);
+		data->ctrl_struct->mask[frame_id] |= 1 << id;
+		LOG_ERR("Motor \"%s\" on canbus %d is responding again, resuming...", dev->name,
+			bus_id);
+	} else if (data->missed_times > 0) {
+		data->missed_times--;
 	}
 	// Store in RAW data. Process when API is called.
 	// Using FPU in ISR is not recommended, since it requires actions on registers
-	motor_data->RAWprev_angle = motor_data->RAWangle;
-	motor_data->RAWangle = COMBINE_HL8(rx_frame.data[0], rx_frame.data[1]);
-	motor_data->RAWrpm = COMBINE_HL8(rx_frame.data[2], rx_frame.data[3]);
-	motor_data->RAWcurrent = COMBINE_HL8(rx_frame.data[4], rx_frame.data[5]);
-	motor_data->RAWtemp = rx_frame.data[6];
-	ctrl_struct[bus_id].flags |= 1 << id;
-	motor_data->prev_time =
-		(motor_data->curr_time == 0) ? (curr_time - 1) : motor_data->curr_time;
-	motor_data->curr_time = curr_time;
+	data->RAWprev_angle = data->RAWangle;
+	data->RAWangle = COMBINE_HL8(rx_frame.data[0], rx_frame.data[1]);
+	data->RAWrpm = COMBINE_HL8(rx_frame.data[2], rx_frame.data[3]);
+	data->RAWcurrent = COMBINE_HL8(rx_frame.data[4], rx_frame.data[5]);
+	data->RAWtemp = rx_frame.data[6];
+	data->ctrl_struct->flags |= 1 << id;
+	data->prev_time = (data->curr_time == 0) ? (curr_time - 1) : data->curr_time;
+	data->curr_time = curr_time;
 	bool full = false;
 	for (int i = 0; i < 5; i++) {
-		uint8_t combined = ctrl_struct[bus_id].mask[i] & ctrl_struct[bus_id].flags;
-		if (combined == ctrl_struct[bus_id].mask[i] && ctrl_struct[bus_id].mask[i]) {
-			ctrl_struct->flags ^= ctrl_struct[bus_id].mask[i];
-			ctrl_struct[bus_id].full[i] = true;
+		uint8_t combined = data->ctrl_struct->mask[i] & data->ctrl_struct->flags;
+		if (combined == data->ctrl_struct->mask[i] && data->ctrl_struct->mask[i]) {
+			data->ctrl_struct->flags = 0;
+			data->ctrl_struct->full[i] = true;
 			full = true;
 		}
 	}
 
-	if (full && !k_work_is_pending(&ctrl_struct[bus_id].full_handle)) {
-		k_work_submit_to_queue(&dji_work_queue, &ctrl_struct[bus_id].full_handle);
+	if (full && !k_work_is_pending(&data->ctrl_struct->full_handle)) {
+		k_work_submit_to_queue(&dji_work_queue, &data->ctrl_struct->full_handle);
 	}
 	// k_thread_resume(dji_motor_ctrl_thread);
-	k_spin_unlock(&motor_data->data_input_lock, key);
+	k_spin_unlock(&data->data_input_lock, key);
 	return;
 }
-
-static const struct can_filter filter20x = {.id = 0x200, .mask = 0x3F0, .flags = 0};
 
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
 {
 	struct k_sem *queue_sem = user_data;
-	if (!error) {
+	if (!error || error == -EIO) {
 		k_sem_give(queue_sem);
+	} else {
+		LOG_ERR("CAN TX error: %d on canbus %d", error, canbus_id(can_dev));
 	}
 }
 
@@ -497,13 +477,13 @@ static void dji_timeout_handle(const struct device *dev, uint32_t curr_time,
 		return;
 	}
 	uint32_t prev_time = motor_data->curr_time;
-	if (k_cyc_to_us_near32(curr_time - prev_time) > 2000) {
+	if (k_cyc_to_us_near32(curr_time - prev_time) > 2000 || curr_time - prev_time > 100000) {
 		motor_data->missed_times++;
 		if (motor_data->missed_times > 3) {
-			LOG_ERR("Motor %d on canbus %d is not responding", motor_cfg->common.id,
+			LOG_ERR("Motor \"%s\" on canbus %d is not responding", dev->name,
 				(int)(ctrl_struct - ctrl_structs));
-			ctrl_struct->mask[frames_id(motor_cfg->common.tx_id)] ^=
-				1 << (motor_cfg->common.id - 1);
+			ctrl_struct->mask[frameID_to_index(motor_cfg->common.tx_id)] &=
+				~(1 << motor_id(dev));
 			motor_data->online = false;
 		}
 	}
@@ -511,16 +491,15 @@ static void dji_timeout_handle(const struct device *dev, uint32_t curr_time,
 
 static void motor_calc(const struct device *dev)
 {
-	const struct device *dev_temp = dev;
-	struct dji_motor_data *data_temp = dev_temp->data;
+	struct dji_motor_data *data_temp = dev->data;
 	k_spinlock_key_t key;
 	if (k_spin_trylock(&data_temp->data_input_lock, &key) != 0) {
 		return;
 	}
-	const struct dji_motor_config *config_temp = dev_temp->config;
+	const struct dji_motor_config *config_temp = dev->config;
 	// Proceed the RAW data
 	// Add up to avoid circular overflow
-	proceed_delta_degree(dev_temp);
+	proceed_delta_degree(dev);
 
 	if (data_temp->common.sample_cnt < 500) {
 		data_temp->common.sample_cnt++;
@@ -530,8 +509,11 @@ static void motor_calc(const struct device *dev)
 	if (data_temp->common.sample_cnt == 1) {
 		data_temp->common.alpha = rpm - data_temp->common.rpm;
 	}
-	data_temp->common.alpha = (1 - Alpha_alpha) * data_temp->common.alpha +
-				  Alpha_alpha * (rpm - data_temp->common.rpm);
+	data_temp->common.alpha =
+		(1 - Alpha_alpha) * data_temp->common.alpha +
+		Alpha_alpha * (rpm - data_temp->common.rpm) * 1000000 /
+			MAX(k_cyc_to_us_near32(data_temp->curr_time - data_temp->prev_time),
+			    0.0006f);
 	data_temp->common.rpm = rpm;
 	data_temp->common.torque = data_temp->RAWcurrent *
 				   convert[data_temp->convert_num][CURRENT2TORQUE] *
@@ -540,7 +522,7 @@ static void motor_calc(const struct device *dev)
 	if (RLS_CUSUM_update(&data_temp->common)) {
 		// LOG_ERR("Wheel is slipping");
 		if (data_temp->common.slip_cb != NULL) {
-			data_temp->common.slip_cb(dev_temp);
+			data_temp->common.slip_cb(dev);
 		}
 	}
 
@@ -600,6 +582,11 @@ void dji_miss_handler(struct k_work *work)
 	ARG_UNUSED(work);
 	int curr_time = k_cycle_get_32();
 	for (int i = 0; i < CAN_COUNT; i++) {
+		if (k_sem_count_get(&ctrl_structs[i].tx_queue_sem) < 1) {
+			// can_stop(ctrl_structs[i].can_dev);
+			// can_start(ctrl_structs[i].can_dev);
+			// k_sem_reset(&ctrl_structs[i].tx_queue_sem);
+		}
 		for (int j = 0; j < 8; j++) {
 			if (ctrl_structs[i].motor_devs[j]) {
 				dji_timeout_handle(ctrl_structs[i].motor_devs[j], curr_time,
@@ -619,15 +606,18 @@ void dji_init_handler(struct k_work *work)
 
 		can_dev = (struct device *)ctrl_structs[i].can_dev;
 		can_start(can_dev);
-
-		int err = can_add_rx_filter(can_dev, can_rx_callback, &ctrl_structs[i], &filter20x);
-
-		if (err < 0) {
-			LOG_ERR("Error adding CAN filter (err %d)", err);
+	}
+	for (int i = 0; i < MOTOR_COUNT; i++) {
+		if (motor_devices[i]) {
+			const struct dji_motor_config *cfg = motor_devices[i]->config;
+			struct can_filter filter = {
+				.id = cfg->common.rx_id, .mask = 0x3FF, .flags = 0};
+			int err = can_add_rx_filter(cfg->common.phy, can_rx_callback,
+						    (void *)motor_devices[i], &filter);
+			if (err < 0) {
+				LOG_ERR("Error attaching CAN RX callback (err %d)", err);
+			}
 		}
-		// If you recieved an error here, remember that 2# CAN of STM32 is in slave
-		// mode and does not have an independent filter. If that is the issue, you
-		// can ignore that.
 	}
 	dji_miss_handle_timer.expiry_fn = dji_miss_isr_handler;
 	k_timer_start(&dji_miss_handle_timer, K_NO_WAIT, K_MSEC(4));
@@ -637,10 +627,15 @@ void dji_tx_handler(struct k_work *work)
 {
 	struct motor_controller *ctrl_struct =
 		CONTAINER_OF(work, struct motor_controller, full_handle);
+	if (work == NULL) {
+		return;
+	}
 
 	for (int i = 0; i < 5; i++) { // For each frame
 		if (ctrl_struct->full[i]) {
-			int8_t id_temp = ctrl_struct->mapping[0][0];
+			ctrl_struct->full[i] = false;
+
+			int8_t id_temp = -1;
 			uint8_t data[8] = {0};
 			bool packed = false;
 
@@ -658,7 +653,7 @@ void dji_tx_handler(struct k_work *work)
 				}
 			}
 			if (packed) {
-				txframe.id = txframe_id(i);
+				txframe.id = index_to_frameID(i);
 				txframe.dlc = 8;
 				txframe.flags = 0;
 				memcpy(txframe.data, data, sizeof(data));
