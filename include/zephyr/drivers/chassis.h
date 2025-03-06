@@ -8,14 +8,14 @@
 
 #include "zephyr/drivers/pid.h"
 #include "zephyr/toolchain.h"
-#include "zephyr/zbus/zbus.h"
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/wheel.h>
 
-#ifndef RADS_TO_RPM
+#ifndef RADPS_TO_RPM
 #define RADPS_TO_RPM 6.28318531f
 #endif
 
@@ -47,10 +47,8 @@ struct pos_data {
 
 typedef struct {
 	float targetYaw;
-	float currentYaw;
 
 	float targetGyro;
-	float currentGyro;
 
 	float targetXSpeed;
 	float targetYSpeed;
@@ -67,10 +65,10 @@ typedef struct {
 
 	chassis_status_t chassis_status;
 
-	float pid_input;
-	float static0;
+	bool track_angle;
+	bool enabled;
 
-	struct zbus_channel *chassis_sensor_zbus;
+	struct pos_data chassis_sensor_data;
 } chassis_data_t;
 
 typedef struct {
@@ -148,7 +146,25 @@ static inline chassis_status_t *z_impl_chassis_get_status(const struct device *d
 static void chassis_update_sensor(const struct device *dev, struct pos_data *pos_data)
 {
 	chassis_data_t *data = dev->data;
-	zbus_chan_pub(data->chassis_sensor_zbus, &pos_data, K_MSEC(5));
+	data->prevTime = data->currTime;
+	data->currTime = k_cycle_get_32();
+	memcpy(&data->chassis_sensor_data, pos_data, sizeof(struct pos_data));
+	data->chassis_sensor_data.Yaw = data->chassis_sensor_data.Yaw < 0
+						? data->chassis_sensor_data.Yaw + 360
+						: data->chassis_sensor_data.Yaw;
+}
+
+static void chassis_set_enabled(const struct device *dev, bool enabled)
+{
+	chassis_data_t *data = dev->data;
+	chassis_cfg_t *cfg = dev->config;
+	data->enabled = enabled;
+	if (!enabled) {
+		for (int i = 0; i < CHASSIS_WHEEL_COUNT; i++) {
+			struct device *wheel = cfg->wheels[i];
+			wheel_disable(wheel);
+		}
+	}
 }
 
 #ifdef __cplusplus

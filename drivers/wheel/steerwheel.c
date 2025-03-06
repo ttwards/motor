@@ -208,11 +208,19 @@ static inline wheel_status_t *steerwheel_get_target(const struct device *dev)
 	return &data->target;
 }
 
+static inline void steerwheel_disable(const struct device *dev)
+{
+	const steerwheel_cfg_t *cfg = dev->config;
+	motor_set_torque(cfg->steer_motor, 0);
+	motor_set_torque(cfg->wheel_motor, 0);
+}
+
 struct wheel_driver_api steerwheel_driver_api = {
 	.wheel_set_speed = steerwheel_set_speed,
 	.wheel_set_static = steerwheel_set_static,
 	.wheel_get_speed = steerwheel_get_speed,
 	.wheel_get_target = steerwheel_get_target,
+	.wheel_disable = steerwheel_disable,
 };
 
 #define STEERWHEEL_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)     \
