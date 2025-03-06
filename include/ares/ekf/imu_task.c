@@ -148,7 +148,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
 	int sample_cnt = 0;
-	for (int i = 0; i < 1000; ++i) {
+	for (int i = 0; i < 600; ++i) {
 		sensor_sample_fetch(accel_dev);
 		sensor_sample_fetch(gyro_dev);
 		sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, accel_data);
@@ -159,11 +159,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 
 		float g = sqrtf(acc[X] * acc[X] + acc[Y] * acc[Y] + acc[Z] * acc[Z]);
 		if (fabsf(g - PHY_G) > 0.16f) {
-			printk("Not stable: %f\n", g);
 			continue;
-		}
-		if (sample_cnt == 200) {
-			break;
 		}
 		acc_init[X] += acc[X];
 		acc_init[Y] += acc[Y];
