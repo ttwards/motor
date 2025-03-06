@@ -7,15 +7,11 @@
 
 #define CHASSIS_STACK_SIZE 2048
 
-#define TRACK_ANGLE DT_PROP(DT_DRV_INST(inst), track_angle)
-
 #define CHASSIS_DATA_INST(inst)                                                                    \
 	static chassis_data_t chassis_data_##inst = {                                              \
 		.chassis_status = {0},                                                             \
 		.targetYaw = 0.0f,                                                                 \
-		.currentYaw = 0.0f,                                                                \
 		.targetGyro = 0.0f,                                                                \
-		.currentGyro = 0.0f,                                                               \
 		.targetXSpeed = 0.0f,                                                              \
 		.targetYSpeed = 0.0f,                                                              \
 		.currentXSpeed = 0.0f,                                                             \
@@ -25,8 +21,9 @@
 		.angleControl = true,                                                              \
 		.angle_to_center = {0.0f},                                                         \
 		.distance_to_center = {0.0f},                                                      \
-		.static0 = 0,                                                                      \
-		.pid_input = 0,                                                                    \
+		.chassis_sensor_data = {0},                                                        \
+		.enabled = true,                                                                   \
+		.track_angle = DT_PROP(DT_DRV_INST(inst), track_angle),                            \
 	};
 
 #define WHEELS_FOREACH(inst, fn) {DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,))}

@@ -13,9 +13,9 @@
 #include "zephyr/drivers/wheel.h"
 #include <zephyr/logging/log.h>
 #include "chassis.h"
-#include <zephyr/zbus/zbus.h>
 #include "zephyr/kernel.h"
 #include "arm_math.h"
+#include "zephyr/sys/time_units.h"
 #include <math.h>
 
 #define DT_DRV_COMPAT ares_chassis
@@ -24,26 +24,15 @@
 
 LOG_MODULE_REGISTER(chassis, CONFIG_MOTOR_LOG_LEVEL);
 
-ZBUS_MSG_SUBSCRIBER_DEFINE(chassis_sensor_msg_suscriber);
-
 #ifndef M_PI_4
 #define M_PI_4 0.78539816339744830962f
 #define M_PI_2 1.57079632679489661923f
 #endif
 
-ZBUS_CHAN_DEFINE(chassis_sensor_zbus,                          /* Name */
-		 struct pos_data,                              /* Message type */
-		 NULL,                                         /* Validator */
-		 NULL,                                         /* User Data */
-		 ZBUS_OBSERVERS(chassis_sensor_msg_suscriber), /* observers */
-		 ZBUS_MSG_INIT(.Yaw = 0, .accel = {0})         /* Initial value */
-);
-
 int cchassis_init(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
-	data->chassis_sensor_zbus = (struct zbus_channel *)&chassis_sensor_zbus;
 	int idx = 0;
 	while (cfg->wheels[idx] != NULL) {
 		float arc;
@@ -57,9 +46,6 @@ int cchassis_init(const struct device *dev)
 	}
 	data->currTime = k_uptime_get_32();
 	data->prevTime = data->currTime;
-	pid_reg_input(cfg->angle_pid, &(data->pid_input), &(data->static0));
-	pid_reg_time(cfg->angle_pid, &(data->currTime), &(data->prevTime));
-	pid_reg_output(cfg->angle_pid, &(data->targetGyro));
 	return 0;
 }
 
@@ -84,7 +70,7 @@ void cchassis_set_gyro(const struct device *dev, float gyro)
 		data->targetGyro = gyro;
 		data->angleControl = false;
 	} else if (!data->angleControl) {
-		data->targetYaw = data->currentYaw;
+		data->targetYaw = data->chassis_sensor_data.Yaw;
 		data->angleControl = true;
 	}
 }
@@ -97,12 +83,6 @@ chassis_status_t *cchassis_get_status(const struct device *dev)
 
 void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 {
-	data->prevTime = data->currTime;
-	data->currTime = k_cycle_get_32();
-
-	if (data->angleControl) {
-		pid_calc(cfg->angle_pid);
-	}
 	// data->targetRollSpeed = 0;
 
 	int idx = 0;
@@ -118,8 +98,8 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 
 		float sin_theta, cos_theta;
 
-		arm_sin_cos_f32(data->angle_to_center[idx] + data->currentYaw, &sin_theta,
-				&cos_theta);
+		arm_sin_cos_f32(data->angle_to_center[idx] + data->chassis_sensor_data.Yaw,
+				&sin_theta, &cos_theta);
 		currentSpeedX[idx] = speed * cos_theta;
 		currentSpeedY[idx] = speed * sin_theta;
 
@@ -130,19 +110,19 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 	while (cfg->wheels[idx] != NULL) {
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->targetGyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->targetGyro;
-#if TRACK_ANGLE
-		float speedX = rollSpeedX + data->targetXSpeed;
-		float speedY = rollSpeedY + data->targetYSpeed;
-#else
-		// 将角度转换为弧度
-		float radians = -data->currentYaw * PI / 180.0f;
-
-		// 计算旋转后的新速度
-		float speedX = data->targetXSpeed * cosf(radians) -
-			       data->targetYSpeed * sinf(radians) + rollSpeedX;
-		float speedY = data->targetXSpeed * sinf(radians) +
-			       data->targetYSpeed * cosf(radians) + rollSpeedY;
-#endif
+		float speedX, speedY;
+		if (!data->track_angle) {
+			speedX = rollSpeedX + data->targetXSpeed;
+			speedY = rollSpeedY + data->targetYSpeed;
+		} else {
+			// 将角度转换为弧度
+			float radians = -data->chassis_sensor_data.Yaw * PI / 180.0f;
+			// 计算旋转后的新速度
+			speedX = data->targetXSpeed * cosf(radians) -
+				 data->targetYSpeed * sinf(radians) + rollSpeedX;
+			speedY = data->targetXSpeed * sinf(radians) +
+				 data->targetYSpeed * cosf(radians) + rollSpeedY;
+		}
 		float steerwheel_speed;
 		arm_sqrt_f32(speedX * speedX + speedY * speedY, &steerwheel_speed);
 		float steerwheel_angle = 0;
@@ -169,7 +149,6 @@ void cchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 {
 	ARG_UNUSED(ptr2);
 	ARG_UNUSED(ptr3);
-	const struct zbus_channel *chan;
 
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
@@ -181,37 +160,37 @@ void cchassis_main_thread(const struct device *dev, void *ptr2, void *ptr3)
 		wheel_set_static(cfg->wheels[i], 90.0f);
 	}
 
-	struct pos_data pos = {0};
-
 	while (true) {
-		zbus_sub_wait_msg(&chassis_sensor_msg_suscriber, &chan, &pos, K_FOREVER);
-		if (data->chassis_sensor_zbus != chan) {
-			continue;
+		k_msleep(1);
+		while (!data->enabled) {
+			k_msleep(100);
+		}
+		float error = 0;
+		if (!isnan(data->chassis_sensor_data.Yaw)) {
+			if (data->angleControl) {
+				float delta_Yaw = data->chassis_sensor_data.Yaw - data->targetYaw;
+				delta_Yaw = fmodf(delta_Yaw, 360.0f);
+				if (delta_Yaw > 180) {
+					delta_Yaw -= 360.0f;
+				} else if (delta_Yaw < -180) {
+					delta_Yaw += 360.0f;
+				}
+				if (fabsf(delta_Yaw) > 0.8f) {
+					error = delta_Yaw;
+				}
+			}
 		}
 
-		if (!isnan(pos.Yaw)) {
-			data->currentYaw = pos.Yaw;
-		}
-
-		if (data->angleControl) {
-			float delta_Yaw = data->targetYaw - data->currentYaw;
-			delta_Yaw = fmodf(delta_Yaw, 360.0f);
-			if (delta_Yaw > 180) {
-				delta_Yaw -= 360.0f;
-			} else if (delta_Yaw < -180) {
-				delta_Yaw += 360.0f;
-			}
-			if (fabsf(delta_Yaw) > 0.8f) {
-				data->pid_input = delta_Yaw;
-			} else {
-				data->pid_input = 0;
-			}
+		if (data->angleControl && !isnan(data->chassis_sensor_data.Yaw)) {
+			data->targetGyro =
+				pid_calc_in(cfg->angle_pid, error,
+					    k_cyc_to_us_near32(data->currTime - data->prevTime));
 		}
 
 		// printk("Yaw: %f, targetYaw: %f, delta_Yaw: %f\n", data->currentYaw,
 		// data->targetYaw,
 		//        delta_Yaw);
-		if ((pos.accel[2] - 9.8f) > 0.4f) {
+		if ((data->chassis_sensor_data.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
 		}
 		cchassis_resolve(data, cfg);
