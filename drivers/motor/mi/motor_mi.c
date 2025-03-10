@@ -1,288 +1,520 @@
-/*	
- * Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-#include <zephyr/drivers/pid.h>
+#include "motor_mi.h"
 #include "zephyr/device.h"
 #include "zephyr/drivers/can.h"
-#include <soc.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <sys/types.h>
+#include "zephyr/types.h"
+#include <zephyr/drivers/pid.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/time_units.h>
-#include "motor_mi.h"
 
 #define DT_DRV_COMPAT mi_motor
 
 LOG_MODULE_REGISTER(motor_mi, CONFIG_MOTOR_LOG_LEVEL);
 
-struct can_frame txMsg = {.flags = CAN_FRAME_IDE, .dlc = 8}; //CAN发送帧
-
-uint8_t  rx_data[8];   //接收数据
-uint32_t Motor_Can_ID; //接收数据电机ID
-
 struct k_sem tx_frame_sem;
 
-mi_motor_data mi_motor[4]; //预先定义四个小米电机
-
-/**
-  * @brief          浮点数转4字节函数
-  * @param[in]      f:浮点数
-  * @retval         4字节数组
-  * @description  : IEEE 754 协议
-  */
-static void Float_to_Byte(float f, uint8_t *byte) {
-    uint32_t data = 0;
-    data          = *(unsigned long *)&f;
-
-    byte[0] = (data & 0xFF000000) >> 24;
-    byte[1] = (data & 0x00FF0000) >> 16;
-    byte[2] = (data & 0x0000FF00) >> 8;
-    byte[3] = (data & 0x000000FF);
-    return;
-}
-
-static void Float_to_Byte_inverse(float f, uint8_t *byte) {
-    uint32_t data = 0;
-    data          = *(unsigned long *)&f;
-
-    byte[3] = (data & 0xFF000000) >> 24;
-    byte[2] = (data & 0x00FF0000) >> 16;
-    byte[1] = (data & 0x0000FF00) >> 8;
-    byte[0] = (data & 0x000000FF);
-    return;
-}
-
-/**
-  * @brief          小米电机回文16位数据转浮点
-  * @param[in]      x:16位回文
-  * @param[in]      x_min:对应参数下限
-  * @param[in]      x_max:对应参数上限
-  * @param[in]      bits:参数位数
-  * @retval         返回浮点值
-  */
 static float uint16_to_float(uint16_t x, float x_min, float x_max, int bits) {
-    uint32_t span   = (1 << bits) - 1;
-    float    offset = x_max - x_min;
-    return offset * x / span + x_min;
+  uint32_t span = (1 << bits) - 1;
+  float offset = x_max - x_min;
+  return offset * x / span + x_min;
 }
 
-/**
-  * @brief          小米电机发送浮点转16位数据
-  * @param[in]      x:浮点
-  * @param[in]      x_min:对应参数下限
-  * @param[in]      x_max:对应参数上限
-  * @param[in]      bits:参数位数
-  * @retval         返回浮点值
-  */
-static int float_to_uint(float x, float x_min, float x_max, int bits) {
-    float span   = x_max - x_min;
-    float offset = x_min;
-    if (x > x_max)
-        x = x_max;
-    else if (x < x_min)
-        x = x_min;
-    return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
+int float_to_uint(float x, float x_min, float x_max, int bits) {
+  float span = x_max - x_min;
+  float offset = x_min;
+  if (x > x_max)
+    x = x_max;
+  else if (x < x_min)
+    x = x_min;
+  return (int)((x - offset) * ((float)((1 << bits) - 1)) / span);
 }
 
-static void can_tx_callback(const struct device *can_dev, int error, void *user_data) {
-    struct k_sem *queue_sem = user_data;
-    k_sem_give(queue_sem);
-}
-
-/**
-  * @brief          写入电机参数
-  * @param[in]      Motor:对应控制电机结构体
-  * @param[in]      Index:写入参数对应地址
-  * @param[in]      Value:写入参数值
-  * @param[in]      Value_type:写入参数数据类型
-  * @retval         none
-  */
-static void Set_Motor_Parameter(struct device *dev, uint16_t Index, float Value) {
-    mi_motor_cfg *cfg = (mi_motor_cfg *)dev->config;
-    uint8_t       tx_data[8];
-    txMsg.id =
-        Communication_Type_SetSingleParameter << 24 | cfg->common.tx_id << 8 | cfg->common.id;
-    tx_data[0] = Index;
-    tx_data[1] = Index >> 8;
-    tx_data[2] = 0x00;
-    tx_data[3] = 0x00;
-    Float_to_Byte_inverse(Value, &tx_data[4]);
-    memcpy(txMsg.data, tx_data, sizeof(tx_data));
-    can_send(cfg->common.phy, &txMsg, K_NO_WAIT, can_tx_callback, &tx_frame_sem);
-    return;
-}
-
-/**
-  * @brief          提取电机回复帧扩展ID中的电机CANID
-  * @param[in]      CAN_ID_Frame:电机回复帧中的扩展CANID   
-  * @retval         电机CANID
-  */
-static uint32_t Get_Motor_ID(uint32_t CAN_ID_Frame) { return (CAN_ID_Frame & 0xFFFF) >> 8; }
-
-/**
-  * @brief          电机回复帧数据处理函数
-  * @param[in]      Motor:对应控制电机结构体   
-  * @param[in]      DataFrame:数据帧
-  * @param[in]      IDFrame:扩展ID帧
-  * @retval         None
-  */
-static void Motor_Data_Handler(mi_motor_data *data, uint8_t DataFrame[8], uint32_t IDFrame) {
-    data->Angle  = COMBINE_HL8(DataFrame[0], DataFrame[1]);
-    data->Speed  = COMBINE_HL8(DataFrame[2], DataFrame[3]);
-    data->Torque = COMBINE_HL8(DataFrame[4], DataFrame[5]);
-    data->Temp   = COMBINE_HL8(DataFrame[6], DataFrame[7]);
-
-    data->error_code = (IDFrame & 0x1F0000) >> 16;
-}
-
-/**
-  * @brief          小米电机ID检查
-  * @param[in]      id:  控制电机CAN_ID[出厂默认0x7F]
-  * @retval         none
-  */
-void check_cybergear(struct device *dev) {
-    mi_motor_cfg *cfg = (mi_motor_cfg *)dev->config;
-    txMsg.id          = Communication_Type_GetID << 24 | cfg->common.tx_id;
-    can_send(dev, &txMsg, K_NO_WAIT, can_tx_callback, &tx_frame_sem);
-}
-
-/**
-  * @brief          使能小米电机
-  * @param[in]      Motor:对应控制电机结构体   
-  * @retval         none
-  */
-void start_cybergear(mi_motor_data *Motor) {
-    uint8_t tx_data[8] = {0};
-    txMsg.id           = Communication_Type_MotorEnable << 24 | cfg->common.tx_id;
-    can_txd();
-}
-
-/**
-  * @brief          停止电机
-  * @param[in]      Motor:对应控制电机结构体   
-  * @param[in]      clear_error:清除错误位（0 不清除 1清除）
-  * @retval         None
-  */
-void stop_cybergear(mi_motor_data *Motor, uint8_t clear_error) {
-    uint8_t tx_data[8] = {0};
-    tx_data[0]         = clear_error; //清除错误位设置
-    txMsg.ExtId        = Communication_Type_MotorStop << 24 | cfg->common.tx_id;
-    can_txd();
-}
-
-/**
-  * @brief          设置电机模式(必须停止时调整！)
-  * @param[in]      Motor:  电机结构体
-  * @param[in]      Mode:   电机工作模式（1.运动模式Motion_mode 2. 位置模式Position_mode 3. 速度模式Speed_mode 4. 电流模式Current_mode）
-  * @retval         none
-  */
-void set_mode_cybergear(mi_motor_data *Motor, uint8_t Mode) {
-    Set_Motor_Parameter(Motor, Run_mode, Mode, 's');
-}
-
-/**
-  * @brief          电流控制模式下设置电流
-  * @param[in]      Motor:  电机结构体
-  * @param[in]      Current:电流设置
-  * @retval         none
-  */
-void set_current_cybergear(mi_motor_data *Motor, float Current) {
-    Set_Motor_Parameter(Motor, Iq_Ref, Current, 'f');
-}
-
-/**
-  * @brief          设置电机零点
-  * @param[in]      Motor:  电机结构体
-  * @retval         none
-  */
-void set_zeropos_cybergear(mi_motor_data *Motor) {
-    uint8_t tx_data[8] = {0};
-    tx_data[0]         = 1;
-    txMsg.ExtId        = Communication_Type_SetPosZero << 24 | cfg->common.tx_id;
-    can_txd();
-}
-
-/**
-  * @brief          设置电机CANID
-  * @param[in]      Motor:  电机结构体
-  * @param[in]      Motor:  设置新ID
-  * @retval         none
-  */
-void set_CANID_cybergear(mi_motor_data *Motor, uint8_t CAN_ID) {
-    uint8_t tx_data[8] = {0};
-    txMsg.ExtId        = Communication_Type_CanID << 24 | CAN_ID << 16 | cfg->common.tx_id;
-    Motor->CAN_ID      = CAN_ID; //将新的ID导入电机结构体
-    can_txd();
-}
-/**
-  * @brief          小米电机初始化
-  * @param[in]      Motor:  电机结构体
-  * @param[in]      Can_Id: 小米电机ID(默认0x7F)
-  * @param[in]      mode: 电机工作模式（0.运控模式Motion_mode 1. 位置模式Position_mode 2. 速度模式Speed_mode 3. 电流模式Current_mode）
-  * @retval         none
-  */
-void init_cybergear(mi_motor_data *Motor, uint8_t Can_Id, uint8_t mode) {
-    txMsg.StdId = 0;            //配置CAN发送：标准帧清零
-    txMsg.ExtId = 0;            //配置CAN发送：扩展帧清零
-    txMsg.IDE   = CAN_ID_EXT;   //配置CAN发送：扩展帧
-    txMsg.RTR   = CAN_RTR_DATA; //配置CAN发送：数据帧
-    txMsg.DLC   = 0x08;         //配置CAN发送：数据长度
-
-    Motor->CAN_ID = Can_Id;          //ID设置
-    set_mode_cybergear(Motor, mode); //设置电机模式
-    start_cybergear(Motor);          //使能电机
-}
-
-/**
-  * @brief          小米运控模式指令
-  * @param[in]      Motor:  目标电机结构体
-  * @param[in]      torque: 力矩设置[-12,12] N*M
-  * @param[in]      MechPosition: 位置设置[-12.5,12.5] rad
-  * @param[in]      speed: 速度设置[-30,30] rpm
-  * @param[in]      kp: 比例参数设置
-  * @param[in]      kd: 微分参数设置
-  * @retval         none
-  */
-void motor_controlmode(mi_motor_data *Motor, float torque, float MechPosition, float speed,
-                       float kp, float kd) {
-    uint8_t tx_data[8]; //发送数据初始化
-    //装填发送数据
-    tx_data[0] = float_to_uint(MechPosition, P_MIN, P_MAX, 16) >> 8;
-    tx_data[1] = float_to_uint(MechPosition, P_MIN, P_MAX, 16);
-    tx_data[2] = float_to_uint(speed, V_MIN, V_MAX, 16) >> 8;
-    tx_data[3] = float_to_uint(speed, V_MIN, V_MAX, 16);
-    tx_data[4] = float_to_uint(kp, KP_MIN, KP_MAX, 16) >> 8;
-    tx_data[5] = float_to_uint(kp, KP_MIN, KP_MAX, 16);
-    tx_data[6] = float_to_uint(kd, KD_MIN, KD_MAX, 16) >> 8;
-    tx_data[7] = float_to_uint(kd, KD_MIN, KD_MAX, 16);
-
-    txMsg.ExtId = Communication_Type_MotionControl << 24 |
-                  float_to_uint(torque, T_MIN, T_MAX, 16) << 8 | Motor->CAN_ID; //装填扩展帧数据
-    can_txd();
-}
-
-/*****************************回调函数 负责接回传信息 可转移至别处*****************************/
-/**
-  * @brief          hal库CAN回调函数,接收电机数据
-  * @param[in]      hcan:CAN句柄指针
-  * @retval         none
-  */
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1) {
-    //LED闪烁指示
-    HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &rxMsg, rx_data); //接收数据
-    Motor_Can_ID = Get_Motor_ID(rxMsg.ExtId);                   //首先获取回传电机ID信息
-    switch (Motor_Can_ID)                                       //将对应ID电机信息提取至对应结构体
-    {
-    case 0X01:
-        if (rxMsg.ExtId >> 24 != 0) //检查是否为广播模式
-            Motor_Data_Handler(&mi_motor[0], rx_data, rxMsg.ExtId);
-        else
-            mi_motor[0].MCU_ID = rx_data[0];
-        break;
-    default: break;
+static int get_can_id(const struct device *dev) {
+  const struct mi_motor_cfg *cfg = dev->config;
+  for (int i = 0; i < CAN_COUNT; i++) {
+    if (can_devices[i] == cfg->common.phy) {
+      return i;
     }
+  }
+  return -1;
 }
+
+void can_tx_callback(const struct device *can_dev, int error, void *user_data) {
+  struct k_sem *queue_sem = user_data;
+  if (!error) {
+    k_sem_give(queue_sem);
+  }
+}
+
+int mi_init(const struct device *dev) {
+  const struct mi_motor_cfg *cfg = dev->config;
+  int can_id = get_can_id(dev);
+  k_sem_init(&tx_queue_sem[can_id], 3, 3); // 初始化信号量
+  if (!device_is_ready(cfg->common.phy)) {
+    return -1;
+  }
+  if (k_work_busy_get(&mi_init_work) != 0) {
+    return 0;
+  }
+  k_work_queue_init(&mi_work_queue);
+
+  mi_tx_timer.expiry_fn = mi_isr_init_handler;
+  k_timer_start(&mi_tx_timer, K_MSEC(600), K_MSEC(1));
+  k_timer_user_data_set(&mi_tx_timer, &mi_init_work);
+  return 0;
+}
+int mi_send_queued(struct tx_frame *frame, struct k_msgq *msgq) {
+  int err = k_sem_take(frame->sem, K_NO_WAIT);
+  if (err == 0) {
+    err = can_send(frame->can_dev, &frame->frame, K_NO_WAIT, can_tx_callback,
+                   frame->sem);
+    if (err) {
+      LOG_ERR("TX queue full, will be put into msgq: %d", err);
+    }
+  } else if (err < 0) {
+    // LOG_ERR("CAN hardware TX queue is full. (err %d)", err);
+    err = k_msgq_put(msgq, frame, K_NO_WAIT);
+    if (err) {
+      LOG_ERR("Failed to put CAN frame into TX queue: %d", err);
+    }
+  }
+  return err;
+}
+
+int mi_queue_proceed(struct k_msgq *msgq) {
+  struct tx_frame frame;
+  int err = 0;
+  bool give_up = false;
+  while (!k_msgq_get(msgq, &frame, K_NO_WAIT)) {
+    err = k_sem_take(frame.sem, K_NO_WAIT);
+    if (err == 0) {
+      err = can_send(frame.can_dev, &(frame.frame), K_MSEC(1), can_tx_callback,
+                     frame.sem);
+      if (err) {
+        LOG_ERR("Failed to send CAN frame: %d", err);
+      }
+      k_msgq_purge(msgq);
+    } else {
+      if (give_up) {
+        k_msgq_purge(msgq);
+        break;
+      }
+      k_sleep(K_USEC(300));
+      give_up = true;
+      continue;
+    }
+  }
+  return err;
+}
+
+void mi_motor_control(const struct device *dev, enum motor_cmd cmd) {
+  struct mi_motor_data *data = dev->data;
+  const struct mi_motor_cfg *cfg = dev->config;
+
+  struct can_frame frame={0};
+  frame.flags = CAN_FRAME_IDE;
+  
+  frame.dlc = 8;
+  // uint16_t master_id;
+
+  int can_id = get_can_id(dev);
+  struct mi_can_id *mi_can_id = (struct mi_can_id *)&frame.id;
+  mi_can_id->id = can_id;
+  switch (cmd) {
+  case ENABLE_MOTOR:
+    data->online = true;
+    mi_can_id->mi_msg_mode = Communication_Type_MotorEnable;
+    break;
+  case DISABLE_MOTOR:
+    data->online = false;
+    mi_can_id->mi_msg_mode = Communication_Type_MotorStop;
+    break;
+  case SET_ZERO_OFFSET:
+    mi_can_id->mi_msg_mode = Communication_Type_SetPosZero;
+    frame.data[0] = 0x01;
+    break;
+
+  case CLEAR_PID:
+
+    break;
+  case CLEAR_ERROR:
+
+    break;
+    LOG_ERR("Unsupport motor command: %d", cmd);
+    return;
+  }
+  int err = 0;
+  if (k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT) == 0) {
+    err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback,
+                   &tx_queue_sem[can_id]);
+  }
+  if (err != 0) {
+    LOG_ERR("Failed to send CAN frame: %d", err);
+  }
+}
+
+static void mi_motor_pack(const struct device *dev, struct can_frame *frame) {
+  uint16_t pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp, cur_tep;
+
+  struct mi_motor_data *data = (struct mi_motor_data *)(dev->data);
+
+  struct mi_can_id *mi_can_id = (struct mi_can_id *)(frame->id);
+
+  mi_can_id->id = data->can_id;
+
+  frame->dlc = 8;
+  frame->flags = 0;
+  struct can_frame *frame_follow = frame + 1;
+  frame->flags = CAN_FRAME_IDE;
+  frame_follow->flags = CAN_FRAME_IDE;
+  struct mi_can_id *mi_can_id_fol = (struct mi_can_id *)(frame_follow->id);
+
+  mi_can_id_fol->id = data->can_id;
+  switch (data->common.mode) {
+  case MIT:
+    mi_can_id->mi_msg_mode = Communication_Type_MotionControl_MIT;
+
+    pos_tmp = float_to_uint(data->target_pos, P_MIN, P_MAX, 16);
+    vel_tmp = float_to_uint(data->target_radps, V_MIN, V_MAX, 16);
+    kp_tmp = float_to_uint(data->params.k_d, KP_MIN, KP_MAX, 16);
+    kd_tmp = float_to_uint(data->params.k_d, KD_MIN, KD_MAX, 16);
+    tor_tmp = float_to_uint(data->target_torque, T_MIN, T_MAX, 16);
+    mi_can_id->data = tor_tmp;
+    frame->data[0] = (pos_tmp >> 8) & 0xFF;
+    frame->data[1] = pos_tmp & 0xFF;
+    frame->data[2] = (vel_tmp >> 8) & 0xFF;
+    frame->data[3] = vel_tmp & 0xFF;
+    frame->data[4] = (kp_tmp >> 8) & 0xFF;
+    frame->data[5] = kp_tmp & 0xFF;
+    frame->data[6] = (kd_tmp >> 8) & 0xFF;
+    frame->data[7] = kd_tmp & 0xFF;
+    break;
+  case PV:
+    mi_can_id->mi_msg_mode = Communication_Type_GetSingleParameter;
+
+    pos_tmp = float_to_uint(data->target_pos, P_MIN, P_MAX, 32);
+    vel_tmp = float_to_uint(data->target_radps, V_MIN, V_MAX, 32);
+    frame->data[0] = (Limit_Spd >> 8) & 0xFF;
+    frame->data[1] = Limit_Spd & 0xFF;
+    frame->data[2] = 0;
+    frame->data[3] = 0;
+    frame->data[4] = (vel_tmp >> 24) & 0xFF;
+    frame->data[5] = (vel_tmp >> 16) & 0xFF;
+    frame->data[6] = (vel_tmp >> 8) & 0xFF;
+    frame->data[7] = vel_tmp & 0xFF;
+
+    mi_can_id_fol->mi_msg_mode = Communication_Type_SetSingleParameter;
+    frame_follow->dlc = 8;
+    frame_follow->flags = 0;
+    frame_follow->data[0] = (Loc_Ref >> 8) & 0xff;
+    frame_follow->data[1] = Loc_Ref & 0xff;
+    frame_follow->data[2] = 0;
+    frame_follow->data[3] = 0;
+    frame_follow->data[4] = (pos_tmp >> 24) & 0xff;
+    frame_follow->data[5] = (pos_tmp >> 16) & 0xff;
+    frame_follow->data[6] = (pos_tmp >> 8) & 0xff;
+    frame_follow->data[7] = pos_tmp & 0xff;
+    break;
+  case VO:
+    mi_can_id->mi_msg_mode = Communication_Type_GetSingleParameter;
+    vel_tmp = float_to_uint(data->target_radps, V_MIN, V_MAX, 32);
+    cur_tep = float_to_uint(data->limit_cur, 0, CUR_MAX, 32);
+    frame->data[0] = (Limit_Cur >> 8) & 0xFF;
+    frame->data[1] = Limit_Cur & 0xFF;
+    frame->data[2] = 0;
+    frame->data[3] = 0;
+    frame->data[4] = (cur_tep >> 24) & 0xFF;
+    frame->data[5] = (cur_tep >> 16) & 0xFF;
+    frame->data[6] = (cur_tep >> 8) & 0xFF;
+    frame->data[7] = cur_tep & 0xFF;
+
+    mi_can_id_fol->mi_msg_mode = Communication_Type_SetSingleParameter;
+
+    frame_follow->dlc = 8;
+    frame_follow->flags = 0;
+    frame_follow->data[0] = (Spd_Ref >> 8) & 0xff;
+    frame_follow->data[1] = Spd_Ref & 0xff;
+    frame_follow->data[2] = 0;
+    frame_follow->data[3] = 0;
+    frame_follow->data[4] = (vel_tmp >> 24) & 0xff;
+    frame_follow->data[5] = (vel_tmp >> 16) & 0xff;
+    frame_follow->data[6] = (vel_tmp >> 8) & 0xff;
+    frame_follow->data[7] = vel_tmp & 0xff;
+    break;
+  default:
+    break;
+  }
+}
+
+float mi_motor_get_angle(const struct device *dev) {
+  struct mi_motor_data *data = dev->data;
+  return data->common.angle;
+}
+
+float mi_motor_get_speed(const struct device *dev) {
+  struct mi_motor_data *data = dev->data;
+  return data->common.rpm;
+}
+
+float mi_motor_get_torque(const struct device *dev) {
+  struct mi_motor_data *data = dev->data;
+  return data->common.torque;
+}
+
+int mi_motor_set_mode(const struct device *dev, enum motor_mode mode) {
+  struct mi_motor_data *data = dev->data;
+  const struct mi_motor_cfg *cfg = dev->config;
+  char mode_str[10];
+
+  data->common.mode = mode;
+
+  switch (mode) {
+  case MIT:
+    strcpy(mode_str, "mit");
+
+    break;
+  case PV:
+    strcpy(mode_str, "pv");
+
+    break;
+  case VO:
+    strcpy(mode_str, "vo");
+
+    break;
+  case MULTILOOP:
+    data->online = false;
+    return -ENOSYS;
+    break;
+  default:
+    LOG_DBG("Unknown motor mode: %d", mode);
+    break;
+  }
+
+  for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
+    if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+      break;
+    }
+    if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
+      const struct pid_config *params =
+          pid_get_params(cfg->common.pid_datas[i]);
+
+      data->common.mode = mode;
+      data->params.k_p = params->k_p;
+      data->params.k_d = params->k_d;
+      break;
+    }
+  }
+  return 0;
+}
+
+int mi_motor_set_torque(const struct device *dev, float torque) {
+  struct mi_motor_data *data = dev->data;
+
+  data->target_torque = torque;
+  return 0;
+}
+
+int mi_motor_set_speed(const struct device *dev, float speed_rpm) {
+  struct mi_motor_data *data = dev->data;
+
+  data->target_radps = RPM2RADPS(speed_rpm);
+
+  return 0;
+}
+
+// user must set speed before setting angle
+int mi_motor_set_angle(const struct device *dev, float angle) {
+  struct mi_motor_data *data = dev->data;
+
+  data->target_pos = RAD2DEG * angle;
+
+  return 0;
+}
+
+static int get_motor_id(struct can_frame *frame) {
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    const struct device *dev = motor_devices[i];
+    const struct mi_motor_cfg *cfg = (const struct mi_motor_cfg *)(dev->config);
+    if ((cfg->common.rx_id & 0xFF) == (frame->id & 0xFF)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static struct can_filter filters[CAN_COUNT];
+
+static void mi_can_rx_handler(const struct device *can_dev,
+                              struct can_frame *frame, void *user_data) {
+  int id = get_motor_id(frame);
+  if (id == -1) {
+    LOG_ERR("Unknown motor ID: %d", frame->id);
+    return;
+  }
+
+  struct mi_motor_data *data =
+      (struct mi_motor_data *)(motor_devices[id]->data);
+
+  if (data->missed_times > 0) {
+    if (data->missed_times > 5 && data->online == true) {
+      data->missed_times = 0;
+      LOG_ERR("Motor %d is back online", id);
+    }
+    data->missed_times--;
+  }
+  struct mi_can_id *can_id = (struct mi_can_id *)(frame->id);
+  if (can_id->mi_msg_mode == Communication_Type_MotorFeedback) {
+    data->err = ((can_id->data) >> 8) & 0x1f;
+    data->update = true;
+    data->RAWangle = (frame->data[0] << 8) | (frame->data[1]);
+    data->RAWrpm = (frame->data[2] << 8) | (frame->data[3]);
+    data->RAWtorque = (frame->data[4] << 8) | (frame->data[5]);
+    data->RAWtemp = (frame->data[6] << 8) | (frame->data[7]);
+  } else if (can_id->mi_msg_mode == Communication_Type_GetID) {
+    data->can_id = can_id->data;
+  }
+
+  k_work_submit_to_queue(&mi_work_queue, &mi_rx_data_handle);
+}
+
+void mi_rx_data_handler(struct k_work *work) {
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    struct mi_motor_data *data =
+        (struct mi_motor_data *)(motor_devices[i]->data);
+    if (!data->update) {
+      continue;
+    }
+
+    float prev_angle = data->common.angle;
+    data->common.angle =
+        (uint16_to_float(data->RAWangle, (double)P_MIN, (double)P_MAX, 16)) *
+        RAD2DEG;
+    data->common.rpm = RADPS2RPM(
+        uint16_to_float(data->RAWrpm, (double)V_MIN, (double)V_MAX, 16));
+    data->common.torque =
+        uint16_to_float(data->RAWtorque, (double)T_MIN, (double)T_MAX, 16);
+    data->common.temperature = ((float)(data->RAWtemp)) / 10;
+    data->delta_deg_sum += data->common.angle - prev_angle;
+    if (data->delta_deg_sum > 360) {
+      data->common.round_cnt++;
+      data->delta_deg_sum -= 360.0f;
+    } else if (data->delta_deg_sum < -360) {
+      data->common.round_cnt--;
+      data->delta_deg_sum += 360.0f;
+    }
+
+    data->update = false;
+  }
+}
+
+void mi_tx_isr_handler(struct k_timer *dummy) {
+  k_work_submit_to_queue(&mi_work_queue, &mi_tx_data_handle);
+}
+
+void mi_isr_init_handler(struct k_timer *dummy) {
+  dummy->expiry_fn = mi_tx_isr_handler;
+  k_work_queue_start(&mi_work_queue, mi_work_queue_stack, CAN_SEND_STACK_SIZE,
+                     CAN_SEND_PRIORITY, NULL);
+  k_work_submit_to_queue(&mi_work_queue, &mi_init_work);
+}
+
+void mi_tx_data_handler(struct k_work *work) {
+  struct can_frame tx_frame[2]={0};
+tx_frame[0].flags = CAN_FRAME_IDE;
+tx_frame[1].flags = CAN_FRAME_IDE;
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    struct mi_motor_data *data = motor_devices[i]->data;
+    const struct mi_motor_cfg *cfg = motor_devices[i]->config;
+    if (data->online && data->missed_times <= 5) {
+      int can_id = get_can_id(motor_devices[i]);
+
+      mi_motor_pack(motor_devices[i], &tx_frame[0]);
+      struct tx_frame queued_frame = {
+          .can_dev = cfg->common.phy,
+          .sem = &tx_queue_sem[can_id],
+          .frame = tx_frame[0],
+      };
+
+      mi_send_queued(&queued_frame, &mi_can_tx_msgq);
+      if ((data->common.mode == PV) || (data->common.mode == VO)) {
+        mi_motor_pack(motor_devices[i], &tx_frame[1]);
+        struct tx_frame queued_frame = {
+            .can_dev = cfg->common.phy,
+            .sem = &tx_queue_sem[can_id],
+            .frame = tx_frame[1],
+        };
+
+        mi_send_queued(&queued_frame, &mi_can_tx_msgq);
+      }
+      data->missed_times++;
+      if (data->missed_times > 5) {
+        LOG_ERR("Motor %d is not responding, missed %d times, setting it "
+                "to "
+                "offline...",
+                i, data->missed_times);
+        continue;
+      }
+      if (data->missed_times > 3 && data->err > 1) {
+        mi_motor_control(motor_devices[i], CLEAR_ERROR);
+      }
+    }
+  }
+  mi_queue_proceed(&mi_can_tx_msgq);
+}
+
+void mi_init_handler(struct k_work *work) {
+  k_timer_stop(&mi_tx_timer);
+  LOG_DBG("mi motor control thread started");
+
+  uint32_t id_full1[CAN_COUNT] = {0};
+  uint32_t id_full0[CAN_COUNT] = {0};
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    int can_id = 0;
+    const struct mi_motor_cfg *cfg =
+        (const struct mi_motor_cfg *)(motor_devices[i]->config);
+
+    for (int j = 0; j < CAN_COUNT; j++) {
+      if (can_devices[j] == cfg->common.phy) {
+        can_id = j;
+        break;
+      }
+    }
+    if (filters[can_id].id == 0) {
+      filters[can_id].id = cfg->common.rx_id & 0xFF;
+      id_full1[can_id] = cfg->common.rx_id & 0xFF;
+      id_full0[can_id] = ~(cfg->common.rx_id & 0xFF);
+    }
+    filters[can_id].id &= cfg->common.rx_id & 0xFF;
+    id_full1[can_id] &= cfg->common.rx_id & 0xFF;
+    id_full0[can_id] &= ~(cfg->common.rx_id & 0xFF);
+
+    int err = can_start(cfg->common.phy);
+    if (err) {
+      LOG_ERR("Failed to start CAN device: %d", err);
+    }
+  }
+
+  for (int i = 0; i < CAN_COUNT; i++) {
+    const struct device *can_dev = can_devices[i];
+
+    filters[i].mask = (id_full1[i] | id_full0[i]) & 0x7FF;
+    int err = can_add_rx_filter(can_dev, mi_can_rx_handler, 0, &filters[i]);
+    if (err < 0) {
+      LOG_ERR("Error adding CAN filter (err %d)", err);
+    }
+    // If you recieved an error here, remember that 2# CAN of STM32 is in slave
+    // mode and does not have an independent filter. If that is the issue, you
+    // can ignore that.
+  }
+
+  k_sleep(K_MSEC(500));
+
+  for (int i = 0; i < MOTOR_COUNT; i++) {
+    mi_motor_control(motor_devices[i], ENABLE_MOTOR);
+  }
+
+  k_timer_start(&mi_tx_timer, K_NO_WAIT, K_MSEC(2));
+  k_timer_user_data_set(&mi_tx_timer, &mi_tx_data_handle);
+}
+
+DT_INST_FOREACH_STATUS_OKAY(MIMOTOR_INST)

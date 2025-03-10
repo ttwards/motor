@@ -1,0 +1,24 @@
+# Motor driver configuration options
+
+# Copyright (c) 2024 ttwards <12411711@mail.sustech.edu.cn>
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig PID_MUNU
+    bool "PID drivers"
+    help
+      Enable support for PID devices.
+
+
+
+module = PID_MUNU
+module-str = PID_MUNU
+source "subsys/logging/Kconfig.template.log_config"
+
+config PID
+    bool "PID"
+    help
+      Add support for PID
+   
+if PID_MUNU
+
+endif

@@ -348,7 +348,10 @@ zephyr_udc0: &usbotg_fs {
 			&spi4_sck_pe12
 			&spi4_nss_pe4>;
 	pinctrl-names="default";
-	
+	dmas = <&dma2 0 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
+		   <&dma2 4 5 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
+	//<&dmax stream channel flags>
+	dma-names = "rx", "tx";
 };
 
 &spi5 {

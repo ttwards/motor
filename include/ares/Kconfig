@@ -15,6 +15,7 @@ config IMU_PWM_TEMP_CTRL
     bool "IMU_PWM_TEMP_CTRL"
     help
       Enable IMU PWM TEMP CTRL
+	  select PID
 	
 config AUTO_PROBE_GYRO_BIAS
 	bool "AUTO_PROBE_GYRO_BIAS"
@@ -30,3 +31,13 @@ config VOFA_LIB
 	bool "VOFA_LIB"
 	help
 	  Enable VOFA_LIB
+
+config MASTER_BOARD
+	bool "MASTER_BOARD"
+	help
+	  Enable MASTER_BOARD
+
+config SLAVE_BOARD
+	bool "SLAVE_BOARD"
+	help
+	  Enable SLAVE_BOARD

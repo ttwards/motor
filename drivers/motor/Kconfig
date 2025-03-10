@@ -18,12 +18,20 @@ config MOTOR_DJI
     bool "MOTOR DJI"
     help
       Add support for dji motors
+    select PID
 
 config MOTOR_DM
 	bool "MOTOR DM"
 	help
 	  Add support for dm motors
+    select PID
 
+config MOTOR_MI
+  bool "MOTOR MI"
+  help
+    Add support for mi motors
+  select PID
+    
 config MOTOR_LOG_LEVEL
     int "Motor log level"
     default 4

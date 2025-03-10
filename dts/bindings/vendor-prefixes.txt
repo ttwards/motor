@@ -1,4 +1,5 @@
-dji		DaJiang Innovation Inc.
-dm		DaMiao Bot Inc.
-pid		PID Controller
+dji	DaJiang Innovation Inc.
+dm	DaMiao Bot Inc.
+mi	Xiaomi Corp.
+pid	PID Controller
 ares	ARES Devices
