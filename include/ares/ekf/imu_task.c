@@ -136,7 +136,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
 	pwm_set_pulse_dt(&pwm, 20000000);
-	while (current_temp < target_temp) {
+	for (int i = 0; i < 3; i++) {
 		k_msleep(750);
 		INS.accel_prev_cyc = INS.accel_curr_cyc;
 		INS.accel_curr_cyc = k_cycle_get_32();
@@ -144,6 +144,9 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		IMU_temp_read(accel_dev);
 		// IMU_temp_pwm_set(accel_dev);
 		printk("Current Temp: %.2f, PWM: 100%%\n", (double)current_temp);
+		if (current_temp >= target_temp) {
+			break;
+		}
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
