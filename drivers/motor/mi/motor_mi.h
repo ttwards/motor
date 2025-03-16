@@ -48,7 +48,7 @@
 #define PI 3.14159265f
 #define SIZE_OF_ARRAY(x) (sizeof(x) / sizeof(x[0]))
 #define RAD2ROUND 1.0f / (2 * PI)
-#define RAD2DEG   180.0f / PI
+#define RAD2DEG   (180.0f/PI)
 //参数读取宏定义
 #define Run_mode      0x7005
 #define Iq_Ref        0x7006
@@ -72,7 +72,7 @@
 #define Motor_Error 0x00
 #define Motor_OK    0x01
 
-#define CAN_SEND_STACK_SIZE 4096
+#define CAN_SEND_STACK_SIZE 2048
 #define CAN_SEND_PRIORITY   -1
 
 enum CONTROL_MODE //控制模式定义
@@ -95,10 +95,10 @@ enum ERROR_TAG //错误回传对照
 };
 
 struct mi_can_id {
-    uint32_t mi_msg_mode   : 5;  // 通信类型
+	uint32_t id     : 8;  // 目标ID
     uint32_t data   : 16; // 数据区
-    uint32_t id     : 8;  // 目标ID
-    // uint32_t res    : 3;  // 保留位src/yunqiu
+    uint32_t mi_msg_mode   : 5;  // 通信类型
+    uint32_t res    : 3;  // 保留位src/yunqiu
 };
 struct mi_motor_data {
     struct motor_driver_data common;

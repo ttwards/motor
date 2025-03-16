@@ -165,6 +165,7 @@ void led_init(void)
 
 void board_init(void)
 {
+	k_sleep(K_MSEC(550));
 	PWR_INIT
 	LED_INIT
 	printk("Board init done.\n");
