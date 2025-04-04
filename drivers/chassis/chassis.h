@@ -26,7 +26,10 @@
 		.track_angle = DT_PROP(DT_DRV_INST(inst), track_angle),                            \
 	};
 
-#define WHEELS_FOREACH(inst, fn) {DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,))}
+#define WHEELS_FOREACH(inst, fn)                                                                   \
+	{                                                                                          \
+		DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,))                       \
+	}
 
 #define GET_WHEEL_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx))
 
@@ -43,6 +46,9 @@
 		.wheels = WHEELS_FOREACH(inst, GET_WHEEL_DEVICE),                                  \
 		.pos_X_offset = WHEELS_FOREACH(inst, GET_WHEEL_X_OFFSET),                          \
 		.pos_Y_offset = WHEELS_FOREACH(inst, GET_WHEEL_Y_OFFSET),                          \
+		.max_gyro = DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), max_gyro, 10),                \
+		.max_lin_accel =                                                                   \
+			DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), max_linear_accel, 10) / 1000.0f,  \
 	};
 
 #define CHASSIS_DEFINE_INST(inst)                                                                  \

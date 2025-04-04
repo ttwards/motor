@@ -49,6 +49,7 @@ typedef struct {
 	float targetYaw;
 
 	float targetGyro;
+	float currentGyro;
 
 	float targetXSpeed;
 	float targetYSpeed;
@@ -76,6 +77,8 @@ typedef struct {
 	const struct device *wheels[CHASSIS_WHEEL_COUNT];
 	float pos_X_offset[CHASSIS_WHEEL_COUNT];
 	float pos_Y_offset[CHASSIS_WHEEL_COUNT];
+	float max_lin_accel;
+	float max_gyro, max_lin_speed;
 } chassis_cfg_t;
 
 /**
