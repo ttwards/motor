@@ -24,6 +24,7 @@
 		zephyr,ccm = &ccm0;
 		ares,pwm = &heater;
 		sbus,uart = &usart3;
+		ares,usb = &cdc_acm_uart0;
 	};
 
 	aliases {
@@ -99,10 +100,10 @@
 };
 
 &pll {
-	div-m = <6>;
-	mul-n = <168>;
+	div-m = <12>;
+	mul-n = <336>;
 	div-p = <2>;
-	div-q = <4>;
+	div-q = <7>;
 	clocks = <&clk_hse>;
 	status = "okay";
 };
@@ -144,6 +145,9 @@
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";
+	dmas = <&dma2 7 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>,
+		   <&dma2 5 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>;
+	dma-names = "tx", "rx";
 };
 
 &usart3 {
