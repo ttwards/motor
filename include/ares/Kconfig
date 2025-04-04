@@ -3,6 +3,8 @@
 # Copyright (c) 2025 ttwards <12411711@mail.sustech.edu.cn>
 # SPDX-License-Identifier: Apache-2.0
 
+rsource "connectivity/Kconfig"
+
 menuconfig ARES
     bool "ARES options"
     help
@@ -41,3 +43,8 @@ config SLAVE_BOARD
 	bool "SLAVE_BOARD"
 	help
 	  Enable SLAVE_BOARD
+
+config UART_TRANS_LIB
+	bool "UART_TRANS_LIB"
+	help
+	  Enable UART_TRANS_LIB
