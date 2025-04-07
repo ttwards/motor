@@ -21,8 +21,6 @@ static int count = 0;
 
 const int n = 800 / FREQ;
 
-static bool temp_reached = false;
-
 static IMU_Param_t IMU_Param;
 
 #ifdef DT_HAS_CHOSEN(zephyr_ccm)
@@ -36,12 +34,12 @@ const float yb[3] = {0, 1, 0};
 const float zb[3] = {0, 0, 1};
 
 static const float gravity[3] = {0, 0, 9.81f};
+static float current_temp = 25.0f;
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
 static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(DT_CHOSEN(ares_pwm));
 static float target_temp = 50.0f;
-static float current_temp = 25.0f;
-static float temp_pwm_output = 0.0f;
+static float temp_pwm_output = 19900000.0f;
 #ifdef DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
 PID_NEW_INSTANCE(DT_NODELABEL(imu_temp_pid), ins)
 struct pid_data *temp_pwm_pid = &PID_INS_NAME(DT_NODELABEL(imu_temp_pid), ins);
@@ -60,8 +58,12 @@ float IMU_temp_read(const struct device *dev)
 
 int IMU_temp_pwm_set(const struct device *dev)
 {
+#ifdef CONFIG_IMU_PWM_TEMP_CTRL
 	pid_calc(temp_pwm_pid);
 	return pwm_set_pulse_dt(&pwm, ((int)temp_pwm_output < 0) ? 0 : (int)temp_pwm_output);
+#else
+	return 0;
+#endif // CONFIG_IMU_PWM_TEMP_CTRL
 }
 
 static inline void IMU_Sensor_handle_update(INS_t *data)
@@ -86,13 +88,11 @@ static inline void IMU_Sensor_handle_update(INS_t *data)
 	if (count % 50 == 0) {
 		IMU_temp_read(data->accel_dev);
 
-		if (current_temp >= target_temp && !temp_reached) {
-			temp_reached = true;
-			printk("Temperature reached: %f\n", (double)current_temp);
-		}
-		// Set PWM output
-		if (temp_reached) {
-			IMU_temp_pwm_set(data->accel_dev);
+		IMU_temp_pwm_set(data->accel_dev);
+
+		if (current_temp >= 65) {
+			printk("Current Temp: %.2f, PWM: %d\n", (double)current_temp,
+			       (int)temp_pwm_output);
 		}
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
@@ -135,18 +135,16 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	INS.accel_curr_cyc = k_cycle_get_32();
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-	pwm_set_pulse_dt(&pwm, 20000000);
 	for (int i = 0; i < 3; i++) {
-		k_msleep(750);
 		INS.accel_prev_cyc = INS.accel_curr_cyc;
 		INS.accel_curr_cyc = k_cycle_get_32();
 		sensor_sample_fetch(accel_dev);
 		IMU_temp_read(accel_dev);
-		// IMU_temp_pwm_set(accel_dev);
-		printk("Current Temp: %.2f, PWM: 100%%\n", (double)current_temp);
+		IMU_temp_pwm_set(accel_dev);
 		if (current_temp >= target_temp) {
 			break;
 		}
+		k_msleep(750);
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
