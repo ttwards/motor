@@ -20,3 +20,7 @@ properties:
     required: true
   track_angle:
     type: boolean
+  max_gyro:
+    type: string
+  max_linear_accel:
+    type: string
