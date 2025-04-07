@@ -17,7 +17,7 @@ config IMU_PWM_TEMP_CTRL
     bool "IMU_PWM_TEMP_CTRL"
     help
       Enable IMU PWM TEMP CTRL
-	  select PID
+	select PID
 	
 config AUTO_PROBE_GYRO_BIAS
 	bool "AUTO_PROBE_GYRO_BIAS"
@@ -26,6 +26,8 @@ config AUTO_PROBE_GYRO_BIAS
 
 config EKF_LIB
 	bool "EKF_LIB"
+	select CMSIS_DSP
+	select CONFIG_CMSIS_DSP_MATRIX
 	help
 	  Enable EKF_LIB
 
