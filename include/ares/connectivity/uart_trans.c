@@ -27,7 +27,7 @@ LOG_MODULE_REGISTER(uart_trans, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define CDC_NODE DT_CHOSEN(ares_usb)
 
-struct device *uart_dev = (struct device *)DEVICE_DT_GET(CDC_NODE);
+struct device *uart_trans_dev = (struct device *)DEVICE_DT_GET(CDC_NODE);
 
 // serial buffer pool
 #define FUNC_REPL_SIZE   12
@@ -38,9 +38,12 @@ struct device *uart_dev = (struct device *)DEVICE_DT_GET(CDC_NODE);
 #define MAX_PACK_COUNT 8
 #define MAX_FUNC_COUNT MAX_PACK_COUNT
 
-RING_BUF_DECLARE(uart_rx_rb, 350);
+RING_BUF_DECLARE(uart_rx_rb, 280);
+RING_BUF_DECLARE(incomplete_rb, 280);
 
-K_MEM_SLAB_DEFINE(uart_rx_slab, SYNC_RX_BUF_SIZE, 8, 4);
+uint16_t incomplete_target_tail = 0;
+
+K_MEM_SLAB_DEFINE(uart_rx_slab, SYNC_RX_BUF_SIZE, 12, 4);
 K_MEM_SLAB_DEFINE(func_ret_slab, (FUNC_REPL_SIZE + 4), 8, 4);
 
 uint8_t func_tx_bckup_cnt = 0;
@@ -56,6 +59,7 @@ K_TIMER_DEFINE(heart_beat_timer, uart_trans_heart_beat, NULL);
 bool online = false;
 uint32_t last_heart_beat = 0;
 uint32_t last_receive = 0;
+
 bool rx_throttle = false;
 static bool uart_initialized = false;
 
@@ -70,24 +74,11 @@ static void error_handle(uint16_t req_id, uint16_t error)
 	GET_8BITS(error_frame, ERROR_ID_IDX) = req_id;
 	GET_16BITS(error_frame, ERROR_CODE_IDX) = error;
 	if (error != HEART_BEAT) {
-		LOG_ERR("Error code: %x, Request ID: %x", error, req_id);
+		// LOG_ERR("Error code: %x, Request ID: %x", error, req_id);
 	} else {
 		last_heart_beat = k_cycle_get_32();
 	}
-	uart_tx(uart_dev, error_frame, 8, 10);
-}
-
-static uint16_t get_byte_length(uint8_t *data, size_t len)
-{
-	uint16_t byte_len = 0;
-	for (int i = len - 1; i >= 0; i--) {
-		if (data[i] == 0x00) {
-			byte_len++;
-		} else {
-			break;
-		}
-	}
-	return byte_len;
+	uart_tx(uart_trans_dev, error_frame, 8, 10);
 }
 
 static bool proceed_tx_bck(uint8_t ID)
@@ -102,7 +93,7 @@ static bool proceed_tx_bck(uint8_t ID)
 	while ((item = k_fifo_get(&func_tx_bckup_fifo, K_NO_WAIT)) != NULL) {
 		if (GET_8BITS(item, REPL_REQ_ID_IDX + 4) == ID && !found) {
 			// 找到匹配的项目
-			uart_tx(uart_dev, (const uint8_t *)(item + 4), FUNC_REPL_SIZE, 20);
+			uart_tx(uart_trans_dev, (const uint8_t *)(item + 4), FUNC_REPL_SIZE, 20);
 			found = true;
 			continue;
 		} else {
@@ -117,51 +108,6 @@ static bool proceed_tx_bck(uint8_t ID)
 	}
 
 	return found;
-}
-
-static int find_head_idx(uint8_t data[], size_t len)
-{
-	if (len < 8) {
-		return -1;
-	}
-
-	for (int i = 0; i < len - 4; i++) {
-		uint16_t head = GET_16BITS(data, i);
-		if (head == SYNC_FRAME_HEAD || head == FUNC_FRAME_HEAD || head == REPL_FRAME_HEAD ||
-		    head == REPL_FRAME_HEAD) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-static int find_tail_idx(uint8_t data[], size_t len)
-{
-	if (len < 8) {
-		return -1;
-	}
-
-	for (int i = 0; i < len - 4; i++) {
-		uint16_t tail = GET_16BITS(data, i);
-		if (tail == SYNC_FRAME_TAIL || tail == FUNC_FRAME_TAIL || tail == REPL_FRAME_TAIL) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-static int find_16bit(uint8_t data[], size_t len, uint16_t target)
-{
-	if (len < 8) {
-		return -1;
-	}
-
-	for (int i = 0; i < len - 4; i++) {
-		if (GET_16BITS(data, i) == target) {
-			return i;
-		}
-	}
-	return -1;
 }
 
 static uart_sync_pack_t *find_pack(uint16_t ID)
@@ -199,23 +145,18 @@ static void uart_trans_heart_beat(struct k_timer *timer)
 	last_heart_beat = k_cycle_get_32();
 }
 
-static void parse_sync(uint8_t data[], int8_t len)
+static void parse_sync(uint8_t data[], uart_sync_pack_t *pack, uint8_t len)
 {
 	LOG_HEXDUMP_DBG(data, len, "SYNC frame received");
 	uint8_t crc8 = 0x00;
 	int data_len;
 	data_len = len - 8;
-	uart_sync_pack_t *pack = find_pack(GET_16BITS(data, 2));
-	if (pack == NULL) {
-		LOG_ERR("Cannot find corresponding ID in sync packs.");
-		error_handle(GET_16BITS(data, 2), UNKNOWN_SYNC);
-		return;
-	}
 	crc8 = crc8_ccitt(0x00, data + 2, data_len + 2);
 	if (crc8 != GET_8BITS(data, data_len + SYNC_CRC_OFFSET)) {
 		LOG_ERR("CRC mismatch.");
+		LOG_HEXDUMP_DBG(data, len, "SYNC frame received");
 
-		error_handle(GET_16BITS(data, 2), UNMATCH_CRCx);
+		error_handle(pack->ID, UNMATCH_CRCx);
 
 		return;
 	}
@@ -230,18 +171,21 @@ static void parse_func(uint8_t data[], int8_t len)
 {
 	uint8_t crc8 = 0x00;
 	func_mapping_t *map = find_func(GET_16BITS(data, FUNC_ID_IDX));
+	LOG_HEXDUMP_DBG(data, len, "FUNC frame received");
 	if (map == NULL) {
 		LOG_ERR("Cannot find corresponding ID in func mappings.");
-		error_handle(0, UNKNOWN_FUNC);
+		// error_handle(0, UNKNOWN_FUNC);
+		return;
 	}
 	crc8 = crc8_ccitt(0x00, data + 2, 15);
 	if (crc8 != GET_8BITS(data, FUNC_CRC_IDX)) {
 		error_handle(GET_16BITS(data, FUNC_REQ_IDX), UNMATCH_CRCx);
 		return;
 	}
-	void *ret = map->cb((void *)GET_32BITS(data, FUNC_ARG1_IDX),
-			    (void *)GET_32BITS(data, FUNC_ARG2_IDX),
-			    (void *)GET_32BITS(data, FUNC_ARG3_IDX));
+	LOG_DBG("Received Arguments: %x %x %x", GET_32BITS(data, FUNC_ARG1_IDX),
+		GET_32BITS(data, FUNC_ARG2_IDX), GET_32BITS(data, FUNC_ARG3_IDX));
+	uint32_t ret = map->cb(GET_32BITS(data, FUNC_ARG1_IDX), GET_32BITS(data, FUNC_ARG2_IDX),
+			       GET_32BITS(data, FUNC_ARG3_IDX));
 
 	if (func_tx_bckup_cnt == MAX_FUNC_COUNT) {
 		uint8_t *rm_frame = k_fifo_get(&func_tx_bckup_fifo, K_NO_WAIT);
@@ -278,14 +222,14 @@ static void parse_func(uint8_t data[], int8_t len)
 		return;
 	}
 	func_tx_bckup_cnt++;
-	uart_tx(uart_dev, (const uint8_t *)repl_frame, FUNC_REPL_SIZE, 20);
+	uart_tx(uart_trans_dev, (const uint8_t *)repl_frame, FUNC_REPL_SIZE, 20);
 	return;
 }
 
 static void parse_error(uint8_t data[], int8_t len)
 {
 	if (GET_16BITS(data, 6) != ERROR_FRAME_TAIL) {
-		LOG_HEXDUMP_ERR(data, len, "Invalid ERROR frame.");
+		LOG_HEXDUMP_DBG(data, len, "Invalid ERROR frame.");
 		LOG_ERR("Invalid ERROR frame tail. %x", GET_16BITS(data, 7));
 		return;
 	}
@@ -314,54 +258,65 @@ static void parse_error(uint8_t data[], int8_t len)
 static void process_received_data()
 {
 	uint16_t head;
-	while (!ring_buf_is_empty(&uart_rx_rb)) {
-		if (ring_buf_get(&uart_rx_rb, (uint8_t *)&head, 2) != 2) {
-			ring_buf_put(&uart_rx_rb, (uint8_t *)&head, 1);
-			return;
-		}
+	while (ring_buf_size_get(&uart_rx_rb) >= 8) {
+		ring_buf_get(&uart_rx_rb, (uint8_t *)&head, 2);
 		if (head == SYNC_FRAME_HEAD) {
-			if (ring_buf_size_get(&uart_rx_rb) < 2) {
-				ring_buf_put(&uart_rx_rb, (uint8_t *)&head, 2);
-				return;
-			}
 			uint16_t id = 0;
 			if (ring_buf_get(&uart_rx_rb, (uint8_t *)&id, 2) != 2) {
+				LOG_ERR("Failed to get ID from ring buffer.");
+				ring_buf_reset(&uart_rx_rb);
 				return;
 			}
-			int16_t pack_size = -1;
+			int16_t pack_len = -1;
+			uart_sync_pack_t *pack;
 			for (int i = 0; i < sync_pack_cnt; i++) {
 				if (sync_pack[i].ID == id) {
-					pack_size = sync_pack[i].len + 8;
+					pack_len = sync_pack[i].len + 8;
+					pack = &sync_pack[i];
 					break;
 				}
 			}
-			if (pack_size == -1) {
-				LOG_ERR("Cannot find corresponding ID in sync packs.");
-				error_handle(0, UNKNOWN_SYNC);
+			if (pack_len == -1) {
+				LOG_ERR("Cannot find corresponding ID 0x%x in sync packs.", id);
+				// error_handle(0, UNKNOWN_SYNC);
+				ring_buf_reset(&uart_rx_rb);
 				return;
 			}
-			uint8_t buf[pack_size];
+			uint8_t buf[pack_len];
+
 			GET_16BITS(buf, 0) = SYNC_FRAME_HEAD;
 			GET_16BITS(buf, 2) = id;
 
-			int ret = ring_buf_get(&uart_rx_rb, buf + 4, pack_size - 4);
-			if (ret != pack_size - 4) {
-				ring_buf_put(&uart_rx_rb, buf, ret + 4);
+			int ret = ring_buf_get(&uart_rx_rb, buf + 4, pack_len - 4);
+			if (ret < pack_len - 4) {
+				if (ring_buf_size_get(&incomplete_rb) > 0) {
+					LOG_ERR("Incomplete SYNC frame.");
+					ring_buf_reset(&incomplete_rb);
+				}
+				incomplete_target_tail = SYNC_FRAME_TAIL;
+				ring_buf_put(&incomplete_rb, buf, ret + 4);
 				return;
 			}
-			if (GET_16BITS(buf, pack_size - 2) != SYNC_FRAME_TAIL) {
-				LOG_ERR("Invalid SYNC frame tail.");
-				error_handle(id, UNKNOWN_TAIL);
+			if (GET_16BITS(buf + 4, ret - 2) != SYNC_FRAME_TAIL) {
+				LOG_HEXDUMP_DBG(buf, ret + 4, "Invalid SYNC frame tail.");
+				// error_handle(id, UNKNOWN_TAIL);
+				ring_buf_reset(&uart_rx_rb);
 				return;
 			}
 
-			parse_sync(buf, pack_size);
+			parse_sync(buf, pack, pack_len);
 			continue;
 		} else if (head == FUNC_FRAME_HEAD) {
 			uint8_t buf[20];
 			GET_16BITS(buf, 0) = FUNC_FRAME_HEAD;
-			if (ring_buf_get(&uart_rx_rb, buf + 2, 18) != 18) {
-				LOG_ERR("Failed to get data from ring buffer.");
+			int ret = ring_buf_get(&uart_rx_rb, buf + 2, 18);
+			if (ret < 18) {
+				if (!ring_buf_is_empty(&incomplete_rb)) {
+					LOG_ERR("Incomplete frame.");
+					ring_buf_reset(&incomplete_rb);
+				}
+				ring_buf_put(&incomplete_rb, buf, ret + 2);
+				incomplete_target_tail = FUNC_FRAME_TAIL;
 				return;
 			}
 			parse_func(buf, 20);
@@ -371,11 +326,61 @@ static void process_received_data()
 			GET_16BITS(buf, 0) = ERROR_FRAME_HEAD;
 			if (ring_buf_get(&uart_rx_rb, buf + 2, 6) != 6) {
 				LOG_ERR("Failed to get data from ring buffer.");
+				ring_buf_reset(&uart_rx_rb);
 				return;
 			}
 			parse_error(buf, 8);
 		} else {
-			// LOG_ERR("Invalid frame head.");
+			if (!ring_buf_is_empty(&incomplete_rb)) {
+				ring_buf_put(&incomplete_rb, (uint8_t *)&head, 2);
+			}
+			if (head == incomplete_target_tail) {
+				uint8_t *buf;
+				int len = ring_buf_get_claim(&incomplete_rb, &buf,
+							     ring_buf_size_get(&incomplete_rb));
+				if (buf == NULL) {
+					LOG_ERR("Failed to get data from incomplete ring buffer.");
+					ring_buf_reset(&incomplete_rb);
+					incomplete_target_tail = 0;
+					return;
+				}
+				if (head == SYNC_FRAME_TAIL) {
+					int16_t pack_len = -1;
+					uart_sync_pack_t *pack = NULL;
+					uint16_t id = GET_16BITS(buf, 2);
+					for (int i = 0; i < sync_pack_cnt; i++) {
+						if (sync_pack[i].ID == id) {
+							pack_len = sync_pack[i].len + 8;
+							pack = &sync_pack[i];
+							break;
+						}
+					}
+					if (len != pack_len) {
+						LOG_ERR("Incomplete SYNC frame.");
+						ring_buf_reset(&incomplete_rb);
+						incomplete_target_tail = 0;
+						continue;
+					}
+					parse_sync(buf, pack, len);
+					ring_buf_reset(&incomplete_rb);
+					incomplete_target_tail = 0;
+					ring_buf_get_finish(&incomplete_rb, len);
+				} else if (head == FUNC_FRAME_TAIL) {
+					parse_func(buf, len);
+					ring_buf_reset(&incomplete_rb);
+					incomplete_target_tail = 0;
+					ring_buf_get_finish(&incomplete_rb, len);
+				} else if (head == ERROR_FRAME_TAIL) {
+					parse_error(buf, len);
+					ring_buf_reset(&incomplete_rb);
+					incomplete_target_tail = 0;
+					ring_buf_get_finish(&incomplete_rb, len);
+				} else {
+					LOG_ERR("Invalid frame tail.");
+					ring_buf_reset(&incomplete_rb);
+					incomplete_target_tail = 0;
+				}
+			}
 			continue;
 		}
 	}
@@ -397,7 +402,7 @@ void uart_trans_sync_flush(uart_sync_pack_t *pack)
 
 	LOG_HEXDUMP_DBG(pack->buf, pack->len + 8, "Sync data to send:");
 
-	uart_tx(uart_dev, pack->buf, pack->len + 8, 5);
+	uart_tx(uart_trans_dev, pack->buf, pack->len + 8, 10);
 }
 
 uart_sync_pack_t *uart_trans_sync_add(uart_trans_data_t *data, uint16_t ID, size_t len,
@@ -465,7 +470,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		break;
 
 	case UART_TX_ABORTED:
-		LOG_INF("Tx aborted. Is the serial fast enough?\n");
+		// LOG_INF("Tx aborted. Is the serial fast enough?\n");
 		break;
 
 	case UART_RX_RDY: {
@@ -486,7 +491,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		err = k_mem_slab_alloc(&uart_rx_slab, (void **)&buf, K_NO_WAIT);
 		if (err != 0) {
 			LOG_ERR("Failed to allocate memory for RX buffer.");
-			uart_rx_disable(uart_dev);
+			uart_rx_disable(uart_trans_dev);
 			error_handle(0, TOOHIGH_FREQ);
 			rx_throttle = true;
 			return;
@@ -496,7 +501,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		if (err != 0) {
 			LOG_ERR("Failed to provide new buffer.");
 			k_mem_slab_free(&uart_rx_slab, (void **)&buf);
-			uart_rx_disable(uart_dev);
+			uart_rx_disable(uart_trans_dev);
 			error_handle(0, TOOHIGH_FREQ);
 			rx_throttle = true;
 			return;
@@ -511,16 +516,17 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 			err = k_mem_slab_alloc(&uart_rx_slab, (void **)&buf, K_NO_WAIT);
 			if (err != 0) {
 				LOG_ERR("Failed to allocate memory for RX buffer.");
-				uart_rx_disable(uart_dev);
+				uart_rx_disable(uart_trans_dev);
 				error_handle(0, TOOHIGH_FREQ);
 				return;
 			}
 			rx_throttle = false;
-			err = uart_rx_enable(uart_dev, buf, SYNC_RX_BUF_SIZE, RX_INACTIVE_TIMEOUT);
+			err = uart_rx_enable(uart_trans_dev, buf, SYNC_RX_BUF_SIZE,
+					     RX_INACTIVE_TIMEOUT);
 			if (err != 0) {
 				LOG_ERR("Failed to enable RX.");
 				k_mem_slab_free(&uart_rx_slab, (void **)&buf);
-				uart_rx_disable(uart_dev);
+				uart_rx_disable(uart_trans_dev);
 				error_handle(0, TOOHIGH_FREQ);
 				return;
 			}
@@ -545,7 +551,7 @@ static const struct device *const async_adapter;
 // 初始化函数
 int uart_trans_init(void)
 {
-	if (!device_is_ready(uart_dev)) {
+	if (!device_is_ready(uart_trans_dev)) {
 		LOG_ERR("UART device not ready");
 		return -ENODEV;
 	}
@@ -561,8 +567,8 @@ int uart_trans_init(void)
 
 	if (IS_ENABLED(CONFIG_USB_UART_ASYNC_ADAPTER)) {
 		/* Implement API adapter */
-		uart_async_adapter_init(async_adapter, uart_dev);
-		uart_dev = (struct device *)async_adapter;
+		uart_async_adapter_init(async_adapter, uart_trans_dev);
+		uart_trans_dev = (struct device *)async_adapter;
 	}
 
 	GET_16BITS(error_frame, ERROR_HEAD_IDX) = ERROR_FRAME_HEAD;
@@ -570,13 +576,13 @@ int uart_trans_init(void)
 	GET_8BITS(error_frame, ERROR_ID_IDX) = HEARTBEAT_ID;
 	GET_8BITS(error_frame, ERROR_CODE_IDX) = 0x00;
 
-	err = uart_callback_set(uart_dev, uart_callback, (void *)uart_dev);
+	err = uart_callback_set(uart_trans_dev, uart_callback, (void *)uart_trans_dev);
 
 	// allocate buffer and start rx
 	uart_trans_data_t *buf;
 	err = k_mem_slab_alloc(&uart_rx_slab, (void **)&buf, K_NO_WAIT);
 	__ASSERT(err == 0, "Failed to alloc slab");
-	err = uart_rx_enable(uart_dev, buf, BUF_SIZE, RX_INACTIVE_TIMEOUT);
+	err = uart_rx_enable(uart_trans_dev, buf, BUF_SIZE, RX_INACTIVE_TIMEOUT);
 	__ASSERT(err == 0, "Failed to enable rx");
 
 	uart_initialized = true;
@@ -597,8 +603,7 @@ void uart_trans_process(void)
 			    (k_cyc_to_ms_near32(abs((int)last_heart_beat - (int)last_receive))) >
 				    300) {
 				online = false;
-				LOG_ERR("Connection lost for %d ms.",
-					k_cyc_to_ms_near32(k_cycle_get_32() - last_receive));
+				LOG_ERR("Connection lost.");
 			} else if (!online &&
 				   k_cyc_to_ms_near32(k_cycle_get_32() - last_receive) < 300) {
 				online = true;

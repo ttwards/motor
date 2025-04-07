@@ -67,7 +67,7 @@ typedef struct sync_pack uart_sync_pack_t;
 
 typedef void (*uart_trans_cb_t)(int status);
 
-typedef void *(*uart_trans_func_t)(void *arg1, void *arg2, void *arg3);
+typedef uint32_t (*uart_trans_func_t)(uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
 enum head_type {
 	HEAD_TYPE_SYNC = 0,

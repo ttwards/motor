@@ -427,7 +427,7 @@ static inline void on_tx_complete(const struct device *dev, struct uart_async_ad
 				(unsigned int)event.data.tx.buf, event.data.tx.len);
 			user_callback(dev, &event);
 		} else {
-			LOG_ERR("TX buffer NULL on tx complete");
+			// LOG_ERR("TX buffer NULL on tx complete");
 		}
 	}
 	LOG_DBG("%s: Exit", __func__);
