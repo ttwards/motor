@@ -9,13 +9,9 @@
 
 #define CHASSIS_DATA_INST(inst)                                                                    \
 	static chassis_data_t chassis_data_##inst = {                                              \
-		.chassis_status = {0},                                                             \
-		.targetYaw = 0.0f,                                                                 \
-		.targetGyro = 0.0f,                                                                \
-		.targetXSpeed = 0.0f,                                                              \
-		.targetYSpeed = 0.0f,                                                              \
-		.currentXSpeed = 0.0f,                                                             \
-		.currentYSpeed = 0.0f,                                                             \
+		.chassis_status = {0.0f},                                                          \
+		.set_status = {0.0f},                                                              \
+		.set_status = {0.0f},                                                              \
 		.currTime = 0ULL,                                                                  \
 		.prevTime = 0ULL,                                                                  \
 		.angleControl = true,                                                              \
@@ -26,10 +22,7 @@
 		.track_angle = DT_PROP(DT_DRV_INST(inst), track_angle),                            \
 	};
 
-#define WHEELS_FOREACH(inst, fn)                                                                   \
-	{                                                                                          \
-		DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,))                       \
-	}
+#define WHEELS_FOREACH(inst, fn) {DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,)) }
 
 #define GET_WHEEL_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx))
 
