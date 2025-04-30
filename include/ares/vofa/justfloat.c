@@ -12,6 +12,15 @@
 const uint8_t tail[4] = {0x00, 0x00, 0x80, 0x7f};
 struct JFData aresPlotData;
 
+K_SEM_DEFINE(jf_sem, 0, 3);
+
+static struct k_timer jf_timer;
+
+static void jf_timer_call(struct k_timer *timer_id)
+{
+	k_sem_give(&jf_sem);
+}
+
 static void jf_send_float(struct JFData *data)
 {
 	const struct device *uart_dev = data->uart_dev;
@@ -35,11 +44,10 @@ static struct k_thread jf_thread_data;
 
 static void jf_feedback(void *arg1, void *arg2, void *arg3)
 {
-	int delay = (int)arg1;
 	struct JFData *data = (struct JFData *)arg2;
 
 	while (1) {
-		k_msleep(delay);
+		k_sem_take(&jf_sem, K_FOREVER);
 		if (data->channel == 0) {
 			continue;
 		}
@@ -93,8 +101,13 @@ struct JFData *jf_send_init(const struct device *uart_dev, int delay)
 	aresPlotData.uart_dev = (struct device *)uart_dev;
 	memcpy(&(aresPlotData.fdata[aresPlotData.channel]), tail, 4 * sizeof(uint8_t));
 	aresPlotData.types[aresPlotData.channel] = RAW;
+	delay = delay > 0 ? delay : 10;
 	/* Start JustFloat thread*/
-	k_thread_create(&jf_thread_data, jf_stack_area, K_THREAD_STACK_SIZEOF(jf_stack_area),
-			jf_feedback, (void *)delay, &aresPlotData, NULL, -1, 0, K_NO_WAIT);
+	k_tid_t tid = k_thread_create(&jf_thread_data, jf_stack_area,
+				      K_THREAD_STACK_SIZEOF(jf_stack_area), jf_feedback,
+				      (void *)delay, &aresPlotData, NULL, 1, 0, K_MSEC(200));
+	k_thread_name_set(tid, "just_float");
+	k_timer_init(&jf_timer, jf_timer_call, NULL);
+	k_timer_start(&jf_timer, K_MSEC(200), K_MSEC(delay));
 	return &aresPlotData;
 }
