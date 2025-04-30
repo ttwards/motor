@@ -1,0 +1,21 @@
+# Copyright (c) 2023, Your Name
+# SPDX-License-Identifier: Apache-2.0
+
+description: PAW3395 optical mouse sensor
+
+compatible: "pixart,paw3395"
+
+include: [spi-device.yaml, "sensor-device.yaml"]
+
+properties:
+  cs-gpios:
+    type: phandle-array
+    description: CS pin
+    required: true
+  ripple:
+    type: boolean
+    description: Enable ripple mode
+  dpi:
+    type: int
+    description: DPI setting
+    default: 20000

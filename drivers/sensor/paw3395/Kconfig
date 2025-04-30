@@ -1,0 +1,21 @@
+# PAW3395 optical mouse sensor configuration options
+
+# Copyright (c) 2023, Your Name
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig PAW3395
+    bool "PAW3395 optical mouse sensor"
+    default y
+    depends on DT_HAS_PIXART_PAW3395_ENABLED
+    select SPI
+    help
+      Enable driver for PAW3395 optical mouse sensor.
+
+if PAW3395
+
+config PAW3395_TRIGGER
+    bool "Trigger support"
+    help
+      Enable trigger support for PAW3395 sensor.
+
+endif # PAW3395

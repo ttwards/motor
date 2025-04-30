@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_PAW3395 paw3395)
