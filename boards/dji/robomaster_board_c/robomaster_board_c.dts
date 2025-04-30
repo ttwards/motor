@@ -255,11 +255,27 @@ zephyr_udc0: &usbotg_fs {
 	status = "okay";
 	pinctrl-0=<&spi2_mosi_pb15
 			&spi2_miso_pb14
-			&spi2_sck_pb13
-			&spi2_nss_pb12>;
+			&spi2_sck_pb13>;
 	pinctrl-names="default";
-	dmas = <&dma1 3 0 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
-		   <&dma1 4 0 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
+	// dmas = <&dma1 3 0 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>,
+	// 	   <&dma1 4 0 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
 	//<&dmax stream channel flags>
-	dma-names = "rx", "tx";
+	// dma-names = "rx", "tx";
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* Sector 10 base: 0x080C0000, size: 128KB */
+		/* Sector 11 base: 0x080E0000, size: 128KB */
+		/* 我们使用 Sector 10 和 Sector 11，总共 256KB */
+		storage_partition: partition@c0000 {
+			label = "storage";
+			/* 从 Sector 10 开始 (0x080C0000)，大小为 256KB (0x40000) */
+			reg = <0x00C0000 0x00040000>;
+		};
+	};
 };

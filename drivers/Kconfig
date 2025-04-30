@@ -7,4 +7,5 @@ rsource "transfer/Kconfig"
 rsource "chassis/Kconfig"
 rsource "wheel/Kconfig"
 rsource "pid/Kconfig"
+rsource "sensor/Kconfig"
 endmenu
