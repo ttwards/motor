@@ -24,7 +24,7 @@
 #define FALSE 0 /**< boolean fails */
 #endif
 
-#define PHY_G 9.8161f
+#define PHY_G 9.7887f
 
 typedef struct {
 	uint8_t Initialized;
@@ -37,6 +37,9 @@ typedef struct {
 	float q[4];         // 四元数估计值
 	float GyroBias[3];  // 陀螺仪零偏估计值
 	float AccelBias[3]; // 加速度计零偏估计值
+	float AccelBeta[3]; // 加速度计标定系数
+
+	float accel_dt; // 加速度计采样周期
 
 	float g; // 重力加速度
 
@@ -71,6 +74,8 @@ typedef struct {
 	float YawAngleLast;
 
 	uint64_t UpdateTime;
+
+	bool hasStoredBias; // 是否存储过偏置
 } QEKF_INS_t;
 
 extern QEKF_INS_t QEKF_INS;
@@ -78,9 +83,8 @@ extern float chiSquare;
 extern float ChiSquareTestThreshold;
 void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float process_noise2,
 			    float measure_noise, float lambda, float lpf);
-void IMU_QuaternionEKF_UpdateIMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax,
-						      float ay, float az, float accel_dt,
-						      float gyro_dt);
+void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, float az,
+			      float accel_dt, float gyro_dt);
 void CalcBias(float *q, float *accel, float g, float *bias);
 
 #define default_EKF_F                                                                              \

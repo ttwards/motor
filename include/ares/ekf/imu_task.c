@@ -1,8 +1,6 @@
 #include <zephyr/drivers/sensor.h>
-#include "QuaternionEKF.c"
 #include "ares/ekf/QuaternionEKF.h"
 #include "imu_task.h"
-#include "zephyr/arch/arm/asm_inline_gcc.h"
 #include "zephyr/devicetree.h"
 #include "zephyr/drivers/pid.h"
 #include "zephyr/kernel.h"
@@ -13,18 +11,23 @@
 #include "zephyr/sys/time_units.h"
 #include <math.h>
 #include <stdint.h>
-#include "algorithm.c"
+#include <stdio.h>
 #include <sys/_types.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/logging/log.h>
+#include "matrix_storage.h"
+#include "algorithm.h"
+
+LOG_MODULE_REGISTER(imu_task, LOG_LEVEL_INF);
 
 static int count = 0;
 
-const int n = 800 / FREQ;
-
 static IMU_Param_t IMU_Param;
 
-#ifdef DT_HAS_CHOSEN(zephyr_ccm)
+#if DT_HAS_CHOSEN(zephyr_ccm)
 __ccm_bss_section INS_t INS;
+#elif DT_HAS_CHOSEN(zephyr_dtcm)
+__dtcm_bss_section INS_t INS;
 #else
 INS_t INS;
 #endif
@@ -33,7 +36,6 @@ const float xb[3] = {1, 0, 0};
 const float yb[3] = {0, 1, 0};
 const float zb[3] = {0, 0, 1};
 
-static const float gravity[3] = {0, 0, 9.81f};
 static float current_temp = 25.0f;
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
@@ -68,8 +70,6 @@ int IMU_temp_pwm_set(const struct device *dev)
 
 static inline void IMU_Sensor_handle_update(INS_t *data)
 {
-	// BMI088 has frequency at about 1800Hz
-	// We update at 300Hz
 	if (data->flag != 0b11) {
 		return;
 	}
@@ -135,17 +135,11 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	INS.accel_curr_cyc = k_cycle_get_32();
 
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-	for (int i = 0; i < 3; i++) {
-		INS.accel_prev_cyc = INS.accel_curr_cyc;
-		INS.accel_curr_cyc = k_cycle_get_32();
-		sensor_sample_fetch(accel_dev);
-		IMU_temp_read(accel_dev);
-		IMU_temp_pwm_set(accel_dev);
-		if (current_temp >= target_temp) {
-			break;
-		}
-		k_msleep(750);
-	}
+	INS.accel_prev_cyc = INS.accel_curr_cyc;
+	INS.accel_curr_cyc = k_cycle_get_32();
+	sensor_sample_fetch(accel_dev);
+	IMU_temp_read(accel_dev);
+	IMU_temp_pwm_set(accel_dev);
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
 	int sample_cnt = 0;
@@ -181,6 +175,40 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	QEKF_INS.g = PHY_G;
 #endif // PHY_G
 
+	if (matrix_storage_exists()) {
+		float matrix1[MATRIX_ROWS][MATRIX_COLS];
+		float matrix2[MATRIX_ROWS][MATRIX_COLS];
+		matrix_storage_read(matrix1, matrix2);
+		QEKF_INS.AccelBias[X] = matrix1[0][0];
+		QEKF_INS.AccelBias[Y] = matrix1[0][1];
+		QEKF_INS.AccelBias[Z] = matrix1[0][2];
+		QEKF_INS.AccelBeta[X] = matrix1[1][0];
+		QEKF_INS.AccelBeta[Y] = matrix1[1][1];
+		QEKF_INS.AccelBeta[Z] = matrix1[1][2];
+		QEKF_INS.GyroBias[X] = matrix1[2][0];
+		QEKF_INS.GyroBias[Y] = matrix1[2][1];
+		QEKF_INS.GyroBias[Z] = matrix1[2][2];
+		printk("AccelBias: %f, %f, %f\n", QEKF_INS.AccelBias[X], QEKF_INS.AccelBias[Y],
+		       QEKF_INS.AccelBias[Z]);
+		printk("AccelBeta: %f, %f, %f\n", QEKF_INS.AccelBeta[X], QEKF_INS.AccelBeta[Y],
+		       QEKF_INS.AccelBeta[Z]);
+		printk("GyroBias: %f, %f, %f\n", QEKF_INS.GyroBias[X], QEKF_INS.GyroBias[Y],
+		       QEKF_INS.GyroBias[Z]);
+		QEKF_INS.hasStoredBias = true;
+	} else {
+		LOG_ERR("No stored bias, using default values");
+		LOG_ERR("Please calibrate the sensor");
+		QEKF_INS.AccelBeta[X] = 1;
+		QEKF_INS.AccelBeta[Y] = 1;
+		QEKF_INS.AccelBeta[Z] = 1;
+		QEKF_INS.AccelBias[X] = 0;
+		QEKF_INS.AccelBias[Y] = 0;
+		QEKF_INS.AccelBias[Z] = 0;
+		QEKF_INS.GyroBias[X] = 0;
+		QEKF_INS.GyroBias[Y] = 0;
+		QEKF_INS.GyroBias[Z] = 0;
+	}
+
 	if (sample_cnt == 0) {
 		acc_init[X] = 0;
 		acc_init[Y] = 0;
@@ -188,7 +216,11 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	} else {
 		for (uint8_t i = 0; i < 3; ++i) {
 			acc_init[i] /= sample_cnt;
-			QEKF_INS.GyroBias[i] = gyro[i] / sample_cnt;
+			acc_init[i] -= QEKF_INS.AccelBias[i];
+			acc_init[i] /= QEKF_INS.AccelBeta[i];
+			if (QEKF_INS.GyroBias[i] == 0) {
+				QEKF_INS.GyroBias[i] = gyro[i] / sample_cnt;
+			}
 		}
 	}
 
@@ -211,6 +243,7 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
 }
 
+int acnt = 0;
 static void IMU_Sensor_trig_handler(const struct device *dev, const struct sensor_trigger *trigger)
 {
 	if (trigger->type != SENSOR_TRIG_DATA_READY) {
@@ -218,6 +251,7 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 	}
 	uint32_t current_cyc = k_cycle_get_32();
 	sensor_sample_fetch(dev);
+	acnt++;
 
 	if (trigger->chan == SENSOR_CHAN_ACCEL_XYZ) {
 		struct sensor_value accel_data[3];
@@ -226,9 +260,12 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 		INS.flag |= 1;
 		INS.accel_curr_cyc = current_cyc;
 
-		INS.Accel[X] = sensor_value_to_float(&accel_data[X]);
-		INS.Accel[Y] = sensor_value_to_float(&accel_data[Y]);
-		INS.Accel[Z] = sensor_value_to_float(&accel_data[Z]);
+		INS.Accel[X] = (sensor_value_to_float(&accel_data[X]) - QEKF_INS.AccelBias[X]) /
+			       QEKF_INS.AccelBeta[X];
+		INS.Accel[Y] = (sensor_value_to_float(&accel_data[Y]) - QEKF_INS.AccelBias[Y]) /
+			       QEKF_INS.AccelBeta[Y];
+		INS.Accel[Z] = (sensor_value_to_float(&accel_data[Z]) - QEKF_INS.AccelBias[Z]) /
+			       QEKF_INS.AccelBeta[Z];
 	} else if (trigger->chan == SENSOR_CHAN_GYRO_XYZ) {
 		struct sensor_value gyro_data[3];
 		sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyro_data);
@@ -236,9 +273,9 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 		INS.flag |= 2;
 		INS.gyro_curr_cyc = current_cyc;
 
-		INS.Gyro[0] = sensor_value_to_float(&gyro_data[0]);
-		INS.Gyro[1] = sensor_value_to_float(&gyro_data[1]);
-		INS.Gyro[2] = sensor_value_to_float(&gyro_data[2]);
+		INS.Gyro[0] = sensor_value_to_float(&gyro_data[0]) - QEKF_INS.GyroBias[0];
+		INS.Gyro[1] = sensor_value_to_float(&gyro_data[1]) - QEKF_INS.GyroBias[1];
+		INS.Gyro[2] = sensor_value_to_float(&gyro_data[2]) - QEKF_INS.GyroBias[2];
 	}
 
 	IMU_Sensor_handle_update(&INS);
@@ -246,7 +283,14 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 
 float init_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f}; // [w, x, y, z]
 
-IMU_Bias_t StoredIMU_Bias;
+static struct sensor_trigger accel_trig = {
+	.type = SENSOR_TRIG_DATA_READY,
+	.chan = SENSOR_CHAN_ACCEL_XYZ,
+};
+static struct sensor_trigger gyro_trig = {
+	.type = SENSOR_TRIG_DATA_READY,
+	.chan = SENSOR_CHAN_GYRO_XYZ,
+};
 
 void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev)
 {
@@ -263,16 +307,6 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 		return;
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
-
-#if DT_HAS_CHOSEN(ares_bias)
-	QEKF_INS.GyroBias[X] = DT_STRING_UNQUOTED_BY_IDX(GYRO_BIAS_NODE, gyro_bias, 0);
-	QEKF_INS.GyroBias[Y] = DT_STRING_UNQUOTED_BY_IDX(GYRO_BIAS_NODE, gyro_bias, 1);
-	QEKF_INS.GyroBias[Z] = DT_STRING_UNQUOTED_BY_IDX(GYRO_BIAS_NODE, gyro_bias, 2);
-#else
-	QEKF_INS.GyroBias[X] = 0;
-	QEKF_INS.GyroBias[Y] = 0;
-	QEKF_INS.GyroBias[Z] = 0;
-#endif // DT_HAS_CHOSEN(ares_gyro)
 
 	IMU_Param.scale[X] = 1;
 	IMU_Param.scale[Y] = 1;
@@ -293,7 +327,7 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 	InitQuaternion(accel_dev, gyro_dev, init_quaternion, INS.lpf_Accel);
 
 	// 调用初始化
-	IMU_QuaternionEKF_Init(init_quaternion, 10, 0.001, 100000, 0.9996, 0);
+	IMU_QuaternionEKF_Init(init_quaternion, 10, 0.001, 100000, 0.9999996, 0);
 
 	sensor_trigger_set(accel_dev, &accel_trig, IMU_Sensor_trig_handler);
 	sensor_trigger_set(gyro_dev, &gyro_trig, IMU_Sensor_trig_handler);

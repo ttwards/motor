@@ -58,15 +58,6 @@ typedef struct {
 	float Roll;
 } IMU_Param_t;
 
-static struct sensor_trigger accel_trig = {
-	.type = SENSOR_TRIG_DATA_READY,
-	.chan = SENSOR_CHAN_ACCEL_XYZ,
-};
-static struct sensor_trigger gyro_trig = {
-	.type = SENSOR_TRIG_DATA_READY,
-	.chan = SENSOR_CHAN_GYRO_XYZ,
-};
-
 float IMU_temp_read(const struct device *dev);
 int IMU_temp_pwm_set(const struct device *dev);
 void IMU_Sensor_set_update_cb(update_cb_t cb);

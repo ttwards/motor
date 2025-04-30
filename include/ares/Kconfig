@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 rsource "connectivity/Kconfig"
+rsource "usbd_bulk_trans/Kconfig"
 
 menuconfig ARES
     bool "ARES options"
@@ -14,10 +15,10 @@ module = ARES
 module-str = ARES
 
 config IMU_PWM_TEMP_CTRL
+	select PID
     bool "IMU_PWM_TEMP_CTRL"
     help
       Enable IMU PWM TEMP CTRL
-	select PID
 	
 config AUTO_PROBE_GYRO_BIAS
 	bool "AUTO_PROBE_GYRO_BIAS"
@@ -50,3 +51,8 @@ config UART_TRANS_LIB
 	bool "UART_TRANS_LIB"
 	help
 	  Enable UART_TRANS_LIB
+
+config EXPERIMENTAL_BULK_LIB
+	bool "EXPERIMENTAL_BULK_LIB"
+	help
+	  Enable EXPERIMENTAL_BULK_LIB

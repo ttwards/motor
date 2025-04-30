@@ -17,7 +17,6 @@
 #include "QuaternionEKF.h"
 #include "kalman_filter.h"
 #include <math.h>
-#include "kalman_filter.c"
 #include <zephyr/kernel.h>
 #include "algorithm.h"
 #include <string.h>
@@ -27,6 +26,11 @@ __ccm_bss_section QEKF_INS_t QEKF_INS;
 __ccm_data_section float IMU_QuaternionEKF_P[16] = default_EKF_P;
 __ccm_bss_section float IMU_QuaternionEKF_K[12];
 __ccm_bss_section float IMU_QuaternionEKF_H[12];
+#elif DT_HAS_CHOSEN(zephyr_dtcm)
+__dtcm_bss_section QEKF_INS_t QEKF_INS;
+__dtcm_data_section float IMU_QuaternionEKF_P[16] = default_EKF_P;
+__dtcm_bss_section float IMU_QuaternionEKF_K[12];
+__dtcm_bss_section float IMU_QuaternionEKF_H[12];
 #else
 QEKF_INS_t QEKF_INS;
 float IMU_QuaternionEKF_P[16] = default_EKF_P;
@@ -108,21 +112,22 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	12*    13*    14*    15
 	*/
 	QEKF_INS.dt = gyro_dt;
+	QEKF_INS.accel_dt = accel_dt;
 
-	if (QEKF_INS.UpdateCount == 0) {
-		QEKF_INS.Gyro[0] = gx;
-		QEKF_INS.Gyro[1] = gy;
-		QEKF_INS.Gyro[2] = gz;
+	if (!QEKF_INS.hasStoredBias) {
+		gx -= QEKF_INS.GyroBias[0];
+		gy -= QEKF_INS.GyroBias[1];
+		gz -= QEKF_INS.GyroBias[2];
 	}
 
-	QEKF_INS.Gyro[0] = gx - QEKF_INS.GyroBias[0];
-	QEKF_INS.Gyro[1] = gy - QEKF_INS.GyroBias[1];
-	QEKF_INS.Gyro[2] = gz - QEKF_INS.GyroBias[2];
+	QEKF_INS.Gyro[0] = gx;
+	QEKF_INS.Gyro[1] = gy;
+	QEKF_INS.Gyro[2] = gz;
 
 	// set F
-	halfgxdt = 0.5f * QEKF_INS.Gyro[0] * gyro_dt;
-	halfgydt = 0.5f * QEKF_INS.Gyro[1] * gyro_dt;
-	halfgzdt = 0.5f * QEKF_INS.Gyro[2] * gyro_dt;
+	halfgxdt = 0.5f * gx * gyro_dt;
+	halfgydt = 0.5f * gy * gyro_dt;
+	halfgzdt = 0.5f * gz * gyro_dt;
 
 	// 此部分设定状态转移矩阵F的左上角部分
 	// 4x4子矩阵,即0.5(Ohm-Ohm^bias)*deltaT,右下角有一个2x2单位阵已经初始化好了
@@ -157,7 +162,7 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 		ax * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
 	QEKF_INS.Accel[1] =
 		QEKF_INS.Accel[1] * QEKF_INS.accLPFcoef / (accel_dt + QEKF_INS.accLPFcoef) +
-		ay * accel_dt / (QEKF_INS.dt + QEKF_INS.accLPFcoef);
+		ay * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
 	QEKF_INS.Accel[2] =
 		QEKF_INS.Accel[2] * QEKF_INS.accLPFcoef / (accel_dt + QEKF_INS.accLPFcoef) +
 		az * accel_dt / (accel_dt + QEKF_INS.accLPFcoef);
@@ -172,9 +177,7 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 	}
 
 	// get body state
-	QEKF_INS.gyro_norm = 1.0f / invSqrt(QEKF_INS.Gyro[0] * QEKF_INS.Gyro[0] +
-					    QEKF_INS.Gyro[1] * QEKF_INS.Gyro[1] +
-					    QEKF_INS.Gyro[2] * QEKF_INS.Gyro[2]);
+	QEKF_INS.gyro_norm = 1.0f / invSqrt(gx * gx + gy * gy + gz * gz);
 	QEKF_INS.accl_norm = 1.0f / accelInvNorm;
 
 	// 如果角速度小于阈值且加速度处于设定范围内,认为运动稳定,加速度可以用于修正角速度
@@ -203,7 +206,7 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 #endif // DT_HAS_CHOSEN(ares_bias) && CONFIG_AUTO_PROBE_BIAS
 
 #if CONFIG_AUTO_PROBE_GYRO_BIAS
-	if (BiasFlag) {
+	if (BiasFlag && !QEKF_INS.hasStoredBias) {
 		// We update gyro bias with a low pass filter
 		if (QEKF_INS.UpdateCount == 0) {
 			QEKF_INS.GyroBias[0] = gx;
@@ -218,10 +221,6 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
 #else
 		QEKF_INS.g = PHY_G;
 #endif // PHY_G
-       // CalcBias(QEKF_INS.q, acc, QEKF_INS.g, bias);
-       // QEKF_INS.AccelBias[0] = QEKF_INS.AccelBias[0] * 0.992f + bias[0] * 0.008f;
-       // QEKF_INS.AccelBias[1] = QEKF_INS.AccelBias[1] * 0.992f + bias[1] * 0.008f;
-       // QEKF_INS.AccelBias[2] = QEKF_INS.AccelBias[2] * 0.992f + bias[2] * 0.008f;
 	}
 #endif // CONFIG_AUTO_PROBE_GYRO_BIAS
 

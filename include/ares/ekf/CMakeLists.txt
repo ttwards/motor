@@ -3,8 +3,8 @@
 
 zephyr_library()
 
-set(EKF_SOURCES
-	imu_task.c
+file(GLOB EKF_SOURCES
+	"${CMAKE_CURRENT_SOURCE_DIR}/*.c"
 )
 
 zephyr_library_sources(${EKF_SOURCES})
