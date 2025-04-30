@@ -72,7 +72,7 @@
 #define Motor_Error 0x00
 #define Motor_OK    0x01
 
-#define CAN_SEND_STACK_SIZE 2048
+#define CAN_SEND_STACK_SIZE 4096
 #define CAN_SEND_PRIORITY   -1
 
 enum CONTROL_MODE //控制模式定义
@@ -124,6 +124,7 @@ struct mi_motor_data {
     uint8_t error_code;
 	bool online;
 	bool update;
+	bool enabled;
 	struct pid_config params;
     
 } ;
