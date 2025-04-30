@@ -32,6 +32,24 @@
 #define ALLOC_MEM(size) k_heap_aligned_alloc(&ares_usb_heap, 4, size, K_NO_WAIT)
 #define FREE_MEM(buf)   k_heap_free(&ares_usb_heap, buf)
 
+// Convert uint32_t back to float (C compatible)
+#define TO_FLOAT(x)                                                                                \
+	({                                                                                         \
+		uint32_t temp = (x);                                                               \
+		float result;                                                                      \
+		memcpy(&result, &temp, sizeof(result));                                            \
+		result;                                                                            \
+	})
+
+// Convert uint32_t back to double
+#define TO_DOUBLE(x)                                                                               \
+	({                                                                                         \
+		uint32_t temp = (x);                                                               \
+		double result;                                                                     \
+		memcpy(&result, &temp, sizeof(result));                                            \
+		result;                                                                            \
+	})
+
 void ares_usb_transfer_init(void);
 
 #define SYNC_FRAME_HEAD          0x5A5A
@@ -90,43 +108,31 @@ typedef void (*usb_trans_cb_t)(int status);
 
 typedef uint32_t (*usb_trans_func_t)(uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
-enum head_type {
-	HEAD_TYPE_SYNC = 0,
-	HEAD_TYPE_FUNC,
-	HEAD_TYPE_ERROR,
-	HEAD_TYPE_REPL,
-	HEAD_TYPE_NONE,
-};
-
 struct sync_pack {
 	uint16_t ID;
 	usb_trans_data_t *data;
-	uint8_t crc;
 	uint8_t request_id;
 	size_t len;
 	usb_trans_cb_t cb;
 	uint8_t *buf;
+	bool rxd;
 };
 
 struct id_mapping {
 	uint16_t id;
 	usb_trans_func_t cb;
+	uint32_t arg1;
+	uint32_t arg2;
+	uint32_t arg3;
+	uint16_t req_id;
+	bool rxd;
 };
 
 struct error_frame {
 	uint16_t head;
 	uint8_t request_id;
-	uint8_t reserved;
 	uint16_t error_code;
-	uint16_t tail;
 };
-
-// 定义一个上下文结构体来存储不完整的数据
-typedef struct {
-	uint8_t buffer[256]; // 与process_buffer大小相同
-	enum head_type head; // 当前数据的类型
-	uint16_t length;     // 当前缓冲区中的数据长度
-} PartialDataContext;
 
 void usb_trans_func_add(uint16_t header, usb_trans_func_t cb);
 
@@ -135,7 +141,7 @@ void usb_trans_func_remove(uint16_t header);
 usb_sync_pack_t *usb_trans_sync_add(usb_trans_data_t *data, uint16_t ID, size_t len,
 				    usb_trans_cb_t cb);
 
-void usb_trans_sync_flush(usb_sync_pack_t *pack);
+int usb_trans_sync_flush(usb_sync_pack_t *pack);
 
 void usb_trans_call_func(uint16_t ID, void *arg1, void *arg2, void *arg3, usb_trans_cb_t cb);
 

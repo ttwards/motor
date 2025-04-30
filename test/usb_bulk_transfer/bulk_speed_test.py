@@ -34,7 +34,7 @@ def setup_device():
 def generate_packet():
     """生成符合要求的数据包"""
     header = bytes([0x5A, 0x5A, 0x20, 0x48])
-    payload = os.urandom(16)  # 16字节随机数据
+    payload = b'\x00' * 60
     return header + payload
 
 class USBSender:

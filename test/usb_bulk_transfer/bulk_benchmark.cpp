@@ -10,7 +10,8 @@
 #define PID 0x0001
 #define BULK_OUT_EP1 0x01
 #define BULK_OUT_EP2 0x02
-#define PACKET_SIZE 64
+#define BULK_IN_EP1 0x81
+#define PACKET_SIZE 62
 
 std::atomic<bool> running(true);
 
@@ -66,9 +67,10 @@ int main() {
     // 统计变量
     uint64_t total_packets = 0;
     auto start_time = std::chrono::steady_clock::now();
-    
+
+    int total_bytes = 0;    
     // 主循环
-    int endpoint = BULK_OUT_EP1;
+    int endpoint = BULK_IN_EP1;
     while (running) {
         int transferred = 0;
         ret = libusb_bulk_transfer(dev, endpoint, packet, sizeof(packet), &transferred, 0);
@@ -80,15 +82,17 @@ int main() {
             auto now = std::chrono::steady_clock::now();
             double elapsed = std::chrono::duration<double>(now - start_time).count();
             if (elapsed >= 1.0) {
+                total_bytes += total_packets * PACKET_SIZE / 1024;
                 double rate = total_packets / elapsed;
                 std::cout << "\r" << std::fixed << std::setprecision(1)
                           << "频率: " << rate << " pkts/s | "
-                          << "速度: " << (rate * PACKET_SIZE) / 1024 << " KB/s"
-                          << std::flush;
+                          << "速度: " << (rate * PACKET_SIZE) / 1024 << " KB/s | "
+                          << "已传输: " << total_bytes << "KB"
+			  << std::flush;
                 start_time = now;
-                total_packets = 0;
-            }
-        } else {
+        	total_packets = 0;
+	    }
+	} else {
             check_usb_error(ret, "批量传输");
         }
         

@@ -1,3 +1,4 @@
+#include "zephyr/sys/time_units.h"
 #include "zephyr/toolchain.h"
 #include <stdint.h>
 #include <string.h>
@@ -9,11 +10,12 @@
 #include <zephyr/logging/log.h>
 #include <ares/usb_bulk_trans/usb_trans.h>
 
+#include <sys/errno.h>
 #include <usb_descriptor.h>
 
 LOG_MODULE_REGISTER(usbd_bulk, LOG_LEVEL_INF);
 
-#define HEART_BEAT_DELAY 2
+#define HEART_BEAT_DELAY 20
 
 // ---- 配置参数 ----
 #define ARES_USB_VID  0x1209 // 测试用VID
@@ -37,7 +39,7 @@ LOG_MODULE_REGISTER(usbd_bulk, LOG_LEVEL_INF);
 #define USB_SPEED USBD_SPEED_FS
 #endif
 
-K_HEAP_DEFINE(ares_usb_heap, 12 * BULK_MPS); // USB堆栈
+K_HEAP_DEFINE(ares_usb_heap, 32 * BULK_MPS); // USB堆栈
 
 struct usb_msg {
 	uint8_t *buf; // 接收数据缓冲区
@@ -68,32 +70,37 @@ static func_mapping_t func_table[MAX_PACK_COUNT];
 static int8_t sync_pack_cnt = 0;
 static usb_sync_pack_t sync_pack[MAX_PACK_COUNT];
 
-K_MSGQ_DEFINE(usb_rx_msgq, sizeof(struct usb_msg), 4, 4); // 存储指针
-K_MSGQ_DEFINE(usb_tx_msgq, sizeof(struct usb_msg), 4, 4); // 存储指针
+// K_MSGQ_DEFINE(usb_rx_msgq, sizeof(struct usb_msg), 4, 4);  // 存储指针
+K_MSGQ_DEFINE(usb_tx_msgq, sizeof(struct usb_msg), 12, 4); // 存储指针
 
 static void ares_rx_handler(struct k_work *item);
 static void ares_tx_handler(struct k_work *item);
 
 static void ares_usb_thread_entry(void);
 
-K_THREAD_DEFINE(ares_usb_tid, 768, ares_usb_thread_entry, NULL, NULL, NULL, 0, 0, 0);
+K_THREAD_DEFINE(ares_usb_tid, 2048, ares_usb_thread_entry, NULL, NULL, NULL, 0, 0, 0);
 
 K_SEM_DEFINE(ares_usb_sem, 0, 1); // USB信号量
 
-K_THREAD_STACK_DEFINE(ares_usb_stack, 1536);
-// static void usb_rx_thread_entry(void);
-// K_THREAD_DEFINE(usb_rx_tid, 1024, usb_rx_thread_entry, NULL, NULL, NULL, K_PRIO_COOP(7), 0, 0);
+K_SEM_DEFINE(usb_tx_sem, 1, 1);
 
 static void error_handle(uint16_t req_id, uint16_t error)
 {
+	if (!online) {
+		return;
+	}
 	uint8_t *buf = ALLOC_MEM(ERROR_FRAME_LENGTH);
+	if (buf == NULL) {
+		LOG_INF("Failed to allocate memory for error frame.");
+		return;
+	}
 	GET_16BITS(buf, ERROR_HEAD_IDX) = ERROR_FRAME_HEAD;
 	GET_8BITS(buf, ERROR_ID_IDX) = req_id;
 	GET_16BITS(buf, ERROR_CODE_IDX) = error;
 	if (error != HEART_BEAT) {
 		// LOG_ERR("Error code: %x, Request ID: %x", error, req_id);
 	} else {
-		last_heart_beat = k_cycle_get_32();
+		last_heart_beat = k_uptime_get_32();
 	}
 	struct usb_msg msg = {
 		.buf = buf,
@@ -160,46 +167,56 @@ static func_mapping_t *find_func(uint16_t ID)
 	return NULL;
 }
 
+static void usb_offline_clean()
+{
+	struct usb_msg msg;
+	while (k_msgq_get(&usb_tx_msgq, &msg, K_NO_WAIT) == 0) {
+		if (msg.free) {
+			FREE_MEM(msg.buf);
+		}
+	}
+	k_sem_reset(&ares_usb_sem);
+}
+
 static void usb_trans_heart_beat(struct k_timer *timer)
 {
 	if (online) {
-		if (k_cyc_to_ms_near32(k_cycle_get_32() - last_heart_beat) <= HEART_BEAT_DELAY &&
-		    k_cyc_to_ms_near32(k_cycle_get_32() - last_receive) >= HEART_BEAT_DELAY) {
-			LOG_ERR("Connection lost for %d ms.",
-				k_cyc_to_ms_near32(k_cycle_get_32() - last_receive));
+		if ((k_uptime_get_32() - last_heart_beat) <= HEART_BEAT_DELAY &&
+		    (k_uptime_get_32() - last_receive) >= 10 * HEART_BEAT_DELAY) {
+			LOG_ERR("Connection lost.");
 			online = false;
-			last_heart_beat = k_cycle_get_32();
+			last_heart_beat = k_uptime_get_32();
+			usb_offline_clean();
+		}
+	} else {
+		if ((k_uptime_get_32() - last_receive) <= 10 * HEART_BEAT_DELAY) {
+			LOG_INF("Connection established.");
+			online = true;
 		}
 	}
 	error_handle(HEARTBEAT_ID, HEART_BEAT);
-	last_heart_beat = k_cycle_get_32();
+	k_sem_give(&usb_tx_sem);
+
+	last_heart_beat = k_uptime_get_32();
 }
 
-static void parse_sync(uint8_t data[], usb_sync_pack_t *pack, uint8_t len)
+static void parse_sync(usb_sync_pack_t *pack)
 {
-	LOG_HEXDUMP_DBG(data, len, "SYNC frame received");
-	int data_len;
-	data_len = len - 8;
+	LOG_HEXDUMP_DBG(pack->buf, pack->len + SYNC_FRAME_LENGTH_OFFSET, "SYNC frame received");
+
 	if (pack->cb != NULL) {
 		pack->cb(SYNC_PACK_STATUS_WRITE);
 	}
-	memcpy(pack->data, data + SYNC_DATA_IDX, data_len);
+
+	memcpy(pack->data, pack->buf + SYNC_DATA_IDX, pack->len);
+
+	pack->rxd = false;
 	return;
 }
 
-static void parse_func(uint8_t data[], int8_t len)
+static void parse_func(func_mapping_t *map)
 {
-	func_mapping_t *map = find_func(GET_16BITS(data, FUNC_ID_IDX));
-	LOG_HEXDUMP_DBG(data, len, "FUNC frame received");
-	if (map == NULL) {
-		LOG_ERR("Cannot find corresponding ID in func mappings.");
-		// error_handle(0, UNKNOWN_FUNC);
-		return;
-	}
-	LOG_DBG("Received Arguments: %x %x %x", GET_32BITS(data, FUNC_ARG1_IDX),
-		GET_32BITS(data, FUNC_ARG2_IDX), GET_32BITS(data, FUNC_ARG3_IDX));
-	uint32_t ret = map->cb(GET_32BITS(data, FUNC_ARG1_IDX), GET_32BITS(data, FUNC_ARG2_IDX),
-			       GET_32BITS(data, FUNC_ARG3_IDX));
+	uint32_t ret = map->cb(map->arg1, map->arg2, map->arg3);
 
 	if (func_tx_bckup_cnt == MAX_FUNC_COUNT) {
 		uint8_t *rm_frame = k_fifo_get(&func_tx_bckup_fifo, K_NO_WAIT);
@@ -207,21 +224,18 @@ static void parse_func(uint8_t data[], int8_t len)
 			func_tx_bckup_cnt--;
 			FREE_MEM(rm_frame);
 		} else {
-			LOG_ERR("Failed to free memory for FUNC frame.");
-			error_handle(GET_16BITS(data, FUNC_REQ_IDX), CLEANED_PACK);
 			return;
 		}
 	}
 
-	uint8_t *repl_frame = ALLOC_MEM(FUNC_REPL_SIZE + 4);
-	repl_frame += 4;
+	uint8_t *repl_frame = ALLOC_MEM(FUNC_REPL_SIZE);
 
 	GET_16BITS(repl_frame, REPL_HEAD_IDX) = REPL_FRAME_HEAD;
-	GET_16BITS(repl_frame, REPL_FUNC_ID_IDX) = GET_16BITS(data, FUNC_ID_IDX);
+	GET_16BITS(repl_frame, REPL_FUNC_ID_IDX) = map->id;
 	GET_32BITS(repl_frame, REPL_RET_IDX) = (uint32_t)ret;
-	GET_8BITS(repl_frame, REPL_REQ_ID_IDX) = GET_16BITS(data, FUNC_REQ_IDX);
+	GET_8BITS(repl_frame, REPL_REQ_ID_IDX) = map->req_id;
 
-	k_fifo_put(&func_tx_bckup_fifo, repl_frame - 4);
+	k_fifo_alloc_put(&func_tx_bckup_fifo, repl_frame);
 
 	func_tx_bckup_cnt++;
 
@@ -235,9 +249,11 @@ static void parse_func(uint8_t data[], int8_t len)
 
 	if (ret != 0) {
 		// LOG_ERR("Failed to put FUNC frame into FIFO. (%d)", ret);
-		FREE_MEM(repl_frame - 4);
+		FREE_MEM(repl_frame);
 		return;
 	}
+
+	map->rxd = false;
 
 	return;
 }
@@ -246,6 +262,7 @@ static void parse_error(uint8_t data[], int8_t len)
 {
 	uint8_t req_id = GET_8BITS(data, ERROR_ID_IDX);
 	if (req_id == HEARTBEAT_ID) {
+		// LOG_INF("Heartbeat frame received.");
 		return;
 	}
 	if (!proceed_tx_bck(req_id)) {
@@ -265,15 +282,16 @@ static void parse_error(uint8_t data[], int8_t len)
 	return;
 }
 
-void usb_trans_sync_flush(usb_sync_pack_t *pack)
+int usb_trans_sync_flush(usb_sync_pack_t *pack)
 {
+	if (!online) {
+		return -EUNATCH;
+	}
 	if (pack == NULL) {
 		LOG_ERR("Sync pack is NULL.");
-		return;
+		return -EINVAL;
 	}
 	memcpy(pack->buf + SYNC_DATA_IDX, pack->data, pack->len);
-	GET_16BITS(pack->buf, SYNC_HEAD_IDX) = SYNC_FRAME_HEAD;
-	GET_16BITS(pack->buf, SYNC_ID_IDX) = pack->ID;
 
 	LOG_HEXDUMP_DBG(pack->buf, pack->len + SYNC_FRAME_LENGTH_OFFSET, "Sync data to send:");
 
@@ -283,12 +301,13 @@ void usb_trans_sync_flush(usb_sync_pack_t *pack)
 		.free = false,
 	};
 	int ret = k_msgq_put(&usb_tx_msgq, &msg, K_NO_WAIT);
-	k_sem_give(&ares_usb_sem);
 
 	if (ret != 0) {
-		// LOG_ERR("Failed to put SYNC frame into FIFO. (%d)", ret);
-		return;
+		// LOG_ERR("Failed to put SYNC frame into MSGQ. (%d) %d free left.", ret,
+		// k_msgq_num_free_get(&usb_tx_msgq));
+		return -EBUSY;
 	}
+	k_sem_give(&ares_usb_sem);
 }
 
 usb_sync_pack_t *usb_trans_sync_add(usb_trans_data_t *data, uint16_t ID, size_t len,
@@ -304,13 +323,16 @@ usb_sync_pack_t *usb_trans_sync_add(usb_trans_data_t *data, uint16_t ID, size_t 
 	sync_pack[sync_pack_cnt].cb = cb;
 	sync_pack[sync_pack_cnt].buf = ALLOC_MEM(len + SYNC_FRAME_LENGTH_OFFSET);
 	if (sync_pack[sync_pack_cnt].buf == NULL) {
-		LOG_ERR("Failed to allocate memory for SYNC frame.");
+		LOG_ERR("Failed to allocate memory for SYNC frame. Count: %d", sync_pack_cnt);
 		return NULL;
 	}
+	GET_16BITS(sync_pack[sync_pack_cnt].buf, SYNC_HEAD_IDX) = SYNC_FRAME_HEAD;
+	GET_16BITS(sync_pack[sync_pack_cnt].buf, SYNC_ID_IDX) = ID;
 	sync_pack_cnt++;
 	if (cb) {
 		cb(SYNC_PACK_STATUS_READ);
 	}
+	LOG_INF("Sync pack added: ID %x, data %p, len %d", ID, data, len);
 	usb_trans_sync_flush(&sync_pack[sync_pack_cnt - 1]);
 
 	return &sync_pack[sync_pack_cnt - 1];
@@ -344,52 +366,46 @@ void usb_trans_func_remove(uint16_t header)
 	return;
 }
 
+static void rx_frame_parser(uint8_t *data, uint8_t len);
+
 static void ares_bulk_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code ep_status)
 {
-	uint32_t bytes_to_read;
+	uint8_t *buffer;
 
-	usb_dc_ep_read(ep, NULL, 0, &bytes_to_read);
+	uint16_t len = usb_dc_ep_read_claim(ep, &buffer);
 
-	uint8_t *buffer = ALLOC_MEM(bytes_to_read);
+	rx_frame_parser(buffer, len);
 
-	if (!buffer) {
-		uint8_t buf[bytes_to_read];
-		usb_dc_ep_read(ep, buf, bytes_to_read, NULL);
-		usb_dc_ep_enable(ep);
-		return;
-	}
-
-	usb_dc_ep_read(ep, buffer, bytes_to_read, NULL);
-
-	struct usb_msg msg = {
-		.buf = buffer,
-		.len = bytes_to_read,
-		.free = true,
-	};
-
-	k_msgq_put(&usb_rx_msgq, &msg, K_NO_WAIT);
+	usb_dc_ep_read_finish(ep, len);
 	usb_dc_ep_enable(ep);
-
-	last_receive = k_cycle_get_32();
-
-	k_sem_give(&ares_usb_sem);
 }
 
 static void ares_bulk_in_cb(uint8_t ep, enum usb_dc_ep_cb_status_code ep_status)
 {
 	usb_dc_ep_enable(ep);
+	if (ep_status == USB_DC_EP_DATA_IN) {
+		k_sem_give(&usb_tx_sem);
+	}
 	return;
 }
 
 static void ares_bulk_send(uint8_t ep, struct usb_msg *msg)
 {
 	LOG_DBG("ep 0x%x", ep);
-	// LOG_INF("msg buf %p, len %d", msg->buf, msg->len);
+	if (msg->len != 6) {
+		// LOG_INF("msg buf %p, len %d", msg->buf, msg->len);
+	}
 	LOG_HEXDUMP_DBG(msg->buf, msg->len, "USB TX");
 
 	if (online) {
-		if (usb_dc_ep_write(ep, msg->buf, msg->len, NULL) == -EAGAIN) {
-			online = false;
+		if (k_sem_take(&usb_tx_sem, K_USEC(100)) != 0) {
+			// LOG_ERR("USB TX semaphore timeout.");
+			k_msgq_put(&usb_tx_msgq, msg, K_NO_WAIT);
+			return;
+		}
+		int ret = usb_dc_ep_write(ep, msg->buf, msg->len, NULL);
+		if (ret != 0) {
+			LOG_ERR("Failed to send data to USB: %d", ret);
 		}
 	}
 
@@ -407,66 +423,93 @@ static void ares_tx_handler(struct k_work *item)
 
 		if (msg.len > 0) {
 			ares_bulk_send(current_ep, &msg);
-			current_ep = (current_ep == BULK_EP_IN_1) ? BULK_EP_IN_2 : BULK_EP_IN_1;
+			// current_ep = (current_ep == BULK_EP_IN_1) ? BULK_EP_IN_2 : BULK_EP_IN_1;
 		} else {
 			LOG_ERR("Invalid message length: %d", msg.len);
-			FREE_MEM(msg.buf);
 			continue;
 		}
+	}
+}
+
+static void rx_frame_parser(uint8_t *data, uint8_t len)
+{
+	// LOG_INF("RX frame: %d", len);
+	if (len == 0) {
+		return;
+	}
+	last_receive = k_uptime_get_32();
+	switch (GET_16BITS(data, 0)) {
+	case FUNC_FRAME_HEAD:
+		if (len != FUNC_FRAME_LENGTH) {
+			LOG_ERR("FUNC frame length mismatch: %d vs %d", FUNC_FRAME_LENGTH, len);
+			error_handle(GET_16BITS(data, FUNC_ID_IDX), UNKNOWN_TAIL);
+			break;
+		}
+		func_mapping_t *map = find_func(GET_16BITS(data, FUNC_ID_IDX));
+		LOG_HEXDUMP_DBG(data, len, "FUNC frame received");
+		LOG_DBG("FUNC frame received: ID %x", GET_16BITS(data, FUNC_ID_IDX));
+		if (map == NULL) {
+			LOG_ERR("Cannot find corresponding ID 0x%x in func mappings.",
+				GET_16BITS(data, FUNC_ID_IDX));
+			LOG_HEXDUMP_DBG(data, len, "FUNC frame");
+			// error_handle(0, UNKNOWN_FUNC);
+			return;
+		}
+		map->rxd = true;
+		map->arg1 = GET_32BITS(data, FUNC_ARG1_IDX);
+		map->arg2 = GET_32BITS(data, FUNC_ARG2_IDX);
+		map->arg3 = GET_32BITS(data, FUNC_ARG3_IDX);
+		map->req_id = GET_32BITS(data, FUNC_REQ_IDX);
+		k_sem_give(&ares_usb_sem);
+		break;
+	case SYNC_FRAME_HEAD:
+		for (int i = 0; i < sync_pack_cnt; i++) {
+			if (sync_pack[i].ID == GET_16BITS(data, SYNC_ID_IDX)) {
+				if (sync_pack[i].len + SYNC_FRAME_LENGTH_OFFSET != len) {
+					LOG_ERR("SYNC frame length mismatch: %d vs %d",
+						sync_pack[i].len + SYNC_FRAME_LENGTH_OFFSET, len);
+					error_handle(sync_pack[i].ID, UNKNOWN_TAIL);
+					return;
+				}
+				memcpy(sync_pack[i].buf + SYNC_DATA_IDX, data + SYNC_DATA_IDX,
+				       sync_pack[i].len);
+				sync_pack[i].rxd = true;
+				break;
+			}
+		}
+		LOG_DBG("SYNC frame received: ID %x", GET_16BITS(data, SYNC_ID_IDX));
+		k_sem_give(&ares_usb_sem);
+
+		break;
+	case ERROR_FRAME_HEAD:
+		if (len != ERROR_FRAME_LENGTH) {
+			LOG_ERR("ERROR frame length mismatch: %d vs %d", ERROR_FRAME_LENGTH, len);
+			error_handle(GET_16BITS(data, ERROR_ID_IDX), UNKNOWN_TAIL);
+			break;
+		}
+		parse_error(data, len);
+		break;
+	default:
+		LOG_ERR("Unknown frame received: %x", GET_16BITS(data, 0));
+		// LOG_HEXDUMP_ERR(msg.buf, msg.len, "Unknown frame");
+		break;
 	}
 }
 
 static void ares_rx_handler(struct k_work *item)
 {
 	ARG_UNUSED(item);
-	struct usb_msg msg;
-	while (k_msgq_num_used_get(&usb_rx_msgq) > 0) {
-		k_msgq_get(&usb_rx_msgq, &msg, K_NO_WAIT);
-
-		switch (GET_16BITS(msg.buf, 0)) {
-		case FUNC_FRAME_HEAD:
-			if (msg.len != FUNC_FRAME_LENGTH) {
-				LOG_ERR("FUNC frame length mismatch: %d vs %d", FUNC_FRAME_LENGTH,
-					msg.len);
-				error_handle(GET_16BITS(msg.buf, FUNC_ID_IDX), UNKNOWN_TAIL);
-				goto free;
-			}
-			parse_func(msg.buf, msg.len);
-			break;
-		case SYNC_FRAME_HEAD:
-			for (int i = 0; i < sync_pack_cnt; i++) {
-				if (sync_pack[i].ID == GET_16BITS(msg.buf, SYNC_ID_IDX)) {
-					if (sync_pack[i].len + SYNC_FRAME_LENGTH_OFFSET !=
-					    msg.len) {
-						LOG_ERR("SYNC frame length mismatch: %d vs %d",
-							sync_pack[i].len + SYNC_FRAME_LENGTH_OFFSET,
-							msg.len);
-						error_handle(sync_pack[i].ID, UNKNOWN_TAIL);
-						goto free;
-					}
-					parse_sync(msg.buf, &sync_pack[i], msg.len);
-					goto free;
-				}
-			}
-			LOG_ERR("SYNC frame received: ID %x", GET_16BITS(msg.buf, SYNC_ID_IDX));
-			break;
-		case ERROR_FRAME_HEAD:
-			if (msg.len != ERROR_FRAME_LENGTH) {
-				LOG_ERR("ERROR frame length mismatch: %d vs %d", ERROR_FRAME_LENGTH,
-					msg.len);
-				error_handle(GET_16BITS(msg.buf, ERROR_ID_IDX), UNKNOWN_TAIL);
-				goto free;
-			}
-			parse_error(msg.buf, msg.len);
-			break;
-		default:
-			LOG_ERR("Unknown frame received: %x", GET_16BITS(msg.buf, 0));
-			// LOG_HEXDUMP_ERR(msg.buf, msg.len, "Unknown frame");
-			break;
+	for (int i = 0; i < sync_pack_cnt; i++) {
+		if (sync_pack[i].rxd) {
+			parse_sync(&sync_pack[i]);
 		}
-free:
-		FREE_MEM(msg.buf);
 	}
+	for (int i = 0; i < func_cnt; i++) {
+		if (func_table[i].rxd) {
+			parse_func(&func_table[i]);
+		}
+	}
+	return;
 }
 
 static struct usb_ep_cfg_data ares_ep_cfg[] = {
@@ -508,19 +551,25 @@ static void cb_usb_status(struct usb_cfg_data *cfg, enum usb_dc_status_code cb_s
 	case USB_DC_CONFIGURED:
 		LOG_INF("USB device configured");
 		online = true;
+		k_sem_give(&usb_tx_sem);
 		break;
 	case USB_DC_DISCONNECTED:
 		LOG_INF("USB device disconnected");
 		online = false;
+		usb_offline_clean();
 		break;
 	case USB_DC_SUSPEND:
 		LOG_INF("USB device suspended");
+		online = false;
+		usb_offline_clean();
 		break;
 	case USB_DC_RESUME:
 		LOG_INF("USB device resumed");
 		break;
 	case USB_DC_INTERFACE:
-		ares_bulk_send(ares_ep_cfg[CFG_EP_IN1_IDX].ep_addr, 0);
+		ares_tx_handler(NULL);
+		k_sem_give(&usb_tx_sem);
+
 		LOG_INF("USB interface configured");
 		break;
 	case USB_DC_SET_HALT:
@@ -529,7 +578,7 @@ static void cb_usb_status(struct usb_cfg_data *cfg, enum usb_dc_status_code cb_s
 	case USB_DC_CLEAR_HALT:
 		LOG_INF("Clear Feature ENDPOINT_HALT");
 		if (*param == ares_ep_cfg[CFG_EP_IN1_IDX].ep_addr) {
-			ares_bulk_send(ares_ep_cfg[CFG_EP_IN1_IDX].ep_addr, 0);
+			ares_tx_handler(NULL);
 		}
 		break;
 	case USB_DC_UNKNOWN:
@@ -611,7 +660,7 @@ static void ares_usb_thread_entry(void)
 	while (1) {
 		ares_tx_handler(NULL);
 		ares_rx_handler(NULL);
-		k_sem_take(&ares_usb_sem, K_FOREVER);
+		k_sem_take(&ares_usb_sem, K_MSEC(1));
 	}
 }
 
@@ -628,7 +677,7 @@ void ares_usb_transfer_init(void)
 
 	k_thread_start(ares_usb_tid);
 	k_thread_name_set(ares_usb_tid, "ares_usb_txrx_handler");
-	k_timer_start(&heart_beat_timer, K_MSEC(HEART_BEAT_DELAY), K_MSEC(HEART_BEAT_DELAY));
+	k_timer_start(&heart_beat_timer, K_MSEC(50 * HEART_BEAT_DELAY), K_MSEC(HEART_BEAT_DELAY));
 
 	LOG_INF("USB initialized successfully");
 }
