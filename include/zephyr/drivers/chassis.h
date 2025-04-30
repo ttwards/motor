@@ -46,16 +46,6 @@ struct pos_data {
 };
 
 typedef struct {
-	float targetYaw;
-
-	float targetGyro;
-	float currentGyro;
-
-	float targetXSpeed;
-	float targetYSpeed;
-	float currentXSpeed;
-	float currentYSpeed;
-
 	uint32_t currTime;
 	uint32_t prevTime;
 
@@ -65,6 +55,8 @@ typedef struct {
 	float distance_to_center[CHASSIS_WHEEL_COUNT];
 
 	chassis_status_t chassis_status;
+	chassis_status_t set_status;
+	chassis_status_t target_status;
 
 	bool track_angle;
 	bool enabled;
@@ -164,7 +156,7 @@ static void chassis_set_enabled(const struct device *dev, bool enabled)
 	data->enabled = enabled;
 	if (!enabled) {
 		for (int i = 0; i < CHASSIS_WHEEL_COUNT; i++) {
-			struct device *wheel = cfg->wheels[i];
+			const struct device *wheel = cfg->wheels[i];
 			wheel_disable(wheel);
 		}
 	}
