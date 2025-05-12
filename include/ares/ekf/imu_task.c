@@ -188,12 +188,12 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		QEKF_INS.GyroBias[X] = matrix1[2][0];
 		QEKF_INS.GyroBias[Y] = matrix1[2][1];
 		QEKF_INS.GyroBias[Z] = matrix1[2][2];
-		printk("AccelBias: %f, %f, %f\n", QEKF_INS.AccelBias[X], QEKF_INS.AccelBias[Y],
-		       QEKF_INS.AccelBias[Z]);
-		printk("AccelBeta: %f, %f, %f\n", QEKF_INS.AccelBeta[X], QEKF_INS.AccelBeta[Y],
-		       QEKF_INS.AccelBeta[Z]);
-		printk("GyroBias: %f, %f, %f\n", QEKF_INS.GyroBias[X], QEKF_INS.GyroBias[Y],
-		       QEKF_INS.GyroBias[Z]);
+		printk("AccelBias: %f, %f, %f\n", (double)QEKF_INS.AccelBias[X],
+		       (double)QEKF_INS.AccelBias[Y], (double)QEKF_INS.AccelBias[Z]);
+		printk("AccelBeta: %f, %f, %f\n", (double)QEKF_INS.AccelBeta[X],
+		       (double)QEKF_INS.AccelBeta[Y], (double)QEKF_INS.AccelBeta[Z]);
+		printk("GyroBias: %f, %f, %f\n", (double)QEKF_INS.GyroBias[X],
+		       (double)QEKF_INS.GyroBias[Y], (double)QEKF_INS.GyroBias[Z]);
 		QEKF_INS.hasStoredBias = true;
 	} else {
 		LOG_ERR("No stored bias, using default values");
@@ -239,8 +239,8 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		init_q4[i + 1] =
 			axis_rot[i] * sinf(angle / 2.0f); // 轴角公式,第三轴为0(没有z轴分量)
 	}
-	printk("Init Quaternion: %f, %f, %f, %f\n", init_q4[0], init_q4[1], init_q4[2], init_q4[3]);
-	printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
+	// printk("Init Quaternion: %f, %f, %f, %f\n", init_q4[0], init_q4[1], init_q4[2],
+	// init_q4[3]); printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
 }
 
 int acnt = 0;

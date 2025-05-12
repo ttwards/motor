@@ -117,7 +117,7 @@ static int zms_fs_init(void)
 		return -EINVAL;
 	}
 
-	LOG_INF("Initializing ZMS on %s: offset=0x%lx, sector_size=%u, sector_count=%u",
+	LOG_DBG("Initializing ZMS on %s: offset=0x%lx, sector_size=%u, sector_count=%u",
 		fs.flash_device->name, (long)fs.offset, fs.sector_size, fs.sector_count);
 
 	rc = zms_mount(&fs);
@@ -128,7 +128,7 @@ static int zms_fs_init(void)
 		return rc;
 	}
 
-	LOG_INF("ZMS mounted successfully.");
+	LOG_DBG("ZMS mounted successfully.");
 	zms_initialized = true;
 	return 0;
 }
