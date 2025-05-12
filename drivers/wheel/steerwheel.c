@@ -149,26 +149,15 @@ static inline int steerwheel_set_static(const struct device *dev, float angle)
 	data->negative = false;
 
 	if (delta_angle >= 0) {
-		if (delta_angle < 90) {
-			data->target.angle = target_angle;
-		} else if (delta_angle < 180) {
-			data->target.angle = target_angle - 180.0f;
-			data->negative = true;
-		} else if (delta_angle < 270) {
+		if (delta_angle >= 90 && delta_angle < 270) {
 			data->target.angle = target_angle - 180.0f;
 			data->negative = true;
 		} else {
 			data->target.angle = target_angle;
 			data->negative = false;
 		}
-	} else if (delta_angle < 0) {
-		if (delta_angle > -90) {
-			data->target.angle = target_angle;
-			data->negative = false;
-		} else if (delta_angle > -180) {
-			data->target.angle = target_angle - 180.0f;
-			data->negative = true;
-		} else if (delta_angle > -270) {
+	} else {
+		if (delta_angle <= -90 && delta_angle > -270) {
 			data->target.angle = target_angle - 180.0f;
 			data->negative = true;
 		} else {
