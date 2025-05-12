@@ -1,8 +1,4 @@
-#ifndef SBUS_C
-#define SBUS_C
 #include <stdint.h>
-#include <stdio.h>
-#include <stdbool.h>
 #include "ares_sbus.h"
 #include <string.h>
 #include <sys/_intsup.h>
@@ -20,7 +16,7 @@ LOG_MODULE_REGISTER(ares_sbus, 60);
 
 // serial buffer pool
 #define BUF_SIZE 64
-K_MEM_SLAB_DEFINE(uart_slab, BUF_SIZE, 4, 4);
+static K_MEM_SLAB_DEFINE(sbus_uart_slab, BUF_SIZE, 4, 4);
 
 static const struct device *uart_dev = DEVICE_DT_GET(DT_CHOSEN(sbus_uart));
 
@@ -120,7 +116,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		data->recv_cyc = k_cycle_get_32();
 		// 请求新的接收缓冲区
 		void *new_buf = NULL;
-		err = k_mem_slab_alloc(&uart_slab, &new_buf, K_NO_WAIT);
+		err = k_mem_slab_alloc(&sbus_uart_slab, &new_buf, K_NO_WAIT);
 
 		if (err == 0 && new_buf != NULL && ((uintptr_t)new_buf & 0x3) == 0) {
 			err = uart_rx_buf_rsp(dev, new_buf, BUF_SIZE);
@@ -131,7 +127,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 	case UART_RX_BUF_REQUEST: {
 		uint8_t *buf = NULL; // 使用 void* 类型
 
-		err = k_mem_slab_alloc(&uart_slab, (void **)&buf, K_NO_WAIT);
+		err = k_mem_slab_alloc(&sbus_uart_slab, (void **)&buf, K_NO_WAIT);
 		if (err == 0 && ((uintptr_t)buf & 0x3) == 0 && buf != NULL) {
 			uart_rx_buf_rsp(dev, buf, BUF_SIZE);
 		}
@@ -141,7 +137,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 	case UART_RX_BUF_RELEASED: {
 		void *buf = evt->data.rx_buf.buf;
 		if (buf != NULL) {
-			k_mem_slab_free(&uart_slab, buf);
+			k_mem_slab_free(&sbus_uart_slab, buf);
 		}
 		break;
 	}
@@ -152,13 +148,13 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 	// 添加错误处理
 	case UART_RX_STOPPED: {
 		uint8_t *buf = NULL;
-		err = k_mem_slab_alloc(&uart_slab, (void **)&buf, K_NO_WAIT);
+		err = k_mem_slab_alloc(&sbus_uart_slab, (void **)&buf, K_NO_WAIT);
 		if (err == 0 && buf != NULL && ((uintptr_t)buf & 0x3) == 0) {
 			memset(buf, 0, BUF_SIZE);
 			err = uart_rx_enable(dev, buf, BUF_SIZE, 100);
 			if (err) {
 				LOG_ERR("Failed to enable RX: %d", err);
-				k_mem_slab_free(&uart_slab, (void **)&buf);
+				k_mem_slab_free(&sbus_uart_slab, (void **)&buf);
 			}
 		} else {
 			LOG_ERR("Failed to allocate memory: %d", err);
@@ -194,7 +190,7 @@ static int sbus_init(const struct device *dev)
 		return err;
 	}
 
-	err = k_mem_slab_alloc(&uart_slab, (void **)&buf, K_NO_WAIT);
+	err = k_mem_slab_alloc(&sbus_uart_slab, (void **)&buf, K_NO_WAIT);
 	memset(buf, 0, BUF_SIZE);
 	if (err) {
 		LOG_ERR("Failed to allocate memory: %d", err);
@@ -211,7 +207,7 @@ static int sbus_init(const struct device *dev)
 	err = uart_configure(uart_dev, &config);
 	if (err) {
 		LOG_ERR("Failed to configure UART: %d", err);
-		k_mem_slab_free(&uart_slab, (void **)&buf);
+		k_mem_slab_free(&sbus_uart_slab, (void **)&buf);
 		return err;
 	}
 
@@ -221,7 +217,7 @@ static int sbus_init(const struct device *dev)
 	err = uart_rx_enable(uart_dev, buf, BUF_SIZE, 100);
 	if (err) {
 		LOG_ERR("Failed to enable RX: %d", err);
-		k_mem_slab_free(&uart_slab, (void **)&buf);
+		k_mem_slab_free(&sbus_uart_slab, (void **)&buf);
 		return err;
 	}
 
@@ -270,5 +266,3 @@ static struct sbus_driver_api sbus_api = {
 	SBUS_DT_DEVICE_DEFINE(inst);
 
 DT_INST_FOREACH_STATUS_OKAY(SBUS_DEVICE_INIT)
-
-#endif
