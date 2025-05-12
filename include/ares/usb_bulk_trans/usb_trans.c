@@ -308,6 +308,7 @@ int usb_trans_sync_flush(usb_sync_pack_t *pack)
 		return -EBUSY;
 	}
 	k_sem_give(&ares_usb_sem);
+	return 0;
 }
 
 usb_sync_pack_t *usb_trans_sync_add(usb_trans_data_t *data, uint16_t ID, size_t len,
@@ -405,7 +406,7 @@ static void ares_bulk_send(uint8_t ep, struct usb_msg *msg)
 		}
 		int ret = usb_dc_ep_write(ep, msg->buf, msg->len, NULL);
 		if (ret != 0) {
-			LOG_ERR("Failed to send data to USB: %d", ret);
+			// LOG_ERR("Failed to send data to USB: %d", ret);
 		}
 	}
 
