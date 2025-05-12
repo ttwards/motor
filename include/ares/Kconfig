@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 rsource "connectivity/Kconfig"
-rsource "usbd_bulk_trans/Kconfig"
 
 menuconfig ARES
     bool "ARES options"
