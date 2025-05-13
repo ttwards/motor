@@ -38,8 +38,6 @@ void aresplot_user_send_packet(const uint8_t *data, uint16_t length);
  */
 uint32_t aresplot_user_get_tick_ms(void);
 
-void aresplot_uart_init(const struct device *uart_dev, uint16_t freq);
-
 void aresplot_user_critical_enter(void);
 
 void aresplot_user_critical_exit(void);

@@ -4,6 +4,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/kernel.h>
+#include <zephyr/sys/sys_io.h>
 
 LOG_MODULE_REGISTER(aresplot_uart, LOG_LEVEL_INF);
 
@@ -146,8 +147,10 @@ static void aresplot_tick(void *arg1, void *arg2, void *arg3)
 	}
 }
 
-void aresplot_uart_init(const struct device *uart_dev, uint16_t freq)
+static void aresplot_uart_init(void)
 {
+	const struct device *uart_dev = DEVICE_DT_GET(DT_ALIAS(plot));
+	uint16_t freq = CONFIG_PLOTTER_FREQ;
 	int err;
 	uint8_t *buf = NULL;
 
@@ -160,7 +163,7 @@ void aresplot_uart_init(const struct device *uart_dev, uint16_t freq)
 	aresplot_instance.freq = freq;
 
 	// 配置 UART
-	const struct uart_config config = {.baudrate = 2500000,
+	const struct uart_config config = {.baudrate = 921600,
 					   .parity = UART_CFG_PARITY_NONE,
 					   .stop_bits = UART_CFG_STOP_BITS_1,
 					   .data_bits = UART_CFG_DATA_BITS_8,
@@ -219,3 +222,5 @@ void aresplot_user_critical_exit(void)
 {
 	return;
 }
+
+SYS_INIT(aresplot_uart_init, POST_KERNEL, CONFIG_APPLICATION_INIT_PRIORITY);

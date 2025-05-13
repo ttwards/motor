@@ -55,3 +55,15 @@ config EXPERIMENTAL_BULK_LIB
 	bool "EXPERIMENTAL_BULK_LIB"
 	help
 	  Enable EXPERIMENTAL_BULK_LIB
+
+config PLOTTER
+	bool "PLOTTER"
+	help
+	  Enable PLOTTER
+
+config PLOTTER_FREQ
+	int "PLOTTER_FREQ"
+	range 10 1000
+	default 300
+	help
+	  Set PLOTTER_FREQ
