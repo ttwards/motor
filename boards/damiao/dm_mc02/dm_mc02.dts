@@ -122,13 +122,13 @@
 };
 
 &pll {
-	div-m = <4>;
-	mul-n = <34>;
+	div-m = <2>;
+	mul-n = <40>;
 	div-p = <1>;
 	div-q = <2>;
 	div-r = <2>;
-	fracn = <3072>;
-	clocks = <&clk_hsi>;
+	fracn = <0>;
+	clocks = <&clk_hse>;
 	status = "okay";
 };
 
@@ -139,7 +139,7 @@
 	div-q = <2>;
 	div-r = <2>;
 	fracn = <0>;
-	clocks = <&clk_hsi>;
+	clocks = <&clk_hse>;
 	status = "okay";
 };
 
@@ -150,13 +150,13 @@
 	div-q = <2>;
 	div-r = <2>;
 	fracn = <0>;
-	clocks = <&clk_hsi>;
+	clocks = <&clk_hse>;
 	status = "okay";
 };
 
 &rcc {
 	clocks = <&pll>;
-	clock-frequency = <DT_FREQ_M(550)>;
+	clock-frequency = <DT_FREQ_M(480)>;
 	d1cpre = <1>;
 	hpre = <2>;    /* HCLK: 275   MHz */
 	d1ppre = <2>;  /* APB1: 137.5 MHz	 */
@@ -246,6 +246,7 @@ zephyr_udc0: &usbotg_hs {
 	status = "okay";
 	pinctrl-0 = <&fdcan1_rx_pd0 &fdcan1_tx_pd1>;
 	pinctrl-names = "default";
+	clocks = <&rcc STM32_CLOCK(APB1_2, 8U)>;
 	bitrate = <1000000>;
 };
 
@@ -253,6 +254,7 @@ zephyr_udc0: &usbotg_hs {
 	pinctrl-0 = <&fdcan2_rx_pb5 &fdcan2_tx_pb6>;
 	pinctrl-names = "default";
 	bitrate = <1000000>;
+	clocks = <&rcc STM32_CLOCK(APB1_2, 8U)>;
 	status = "okay";
 };
 
@@ -260,6 +262,7 @@ zephyr_udc0: &usbotg_hs {
 	pinctrl-0 = <&fdcan3_rx_pd12 &fdcan3_tx_pd13>;
 	pinctrl-names = "default";
 	bitrate = <1000000>;
+	clocks = <&rcc STM32_CLOCK(APB1_2, 8U)>;
 	status = "okay";
 };
 
