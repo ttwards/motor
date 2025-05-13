@@ -560,7 +560,6 @@ static void cb_usb_status(struct usb_cfg_data *cfg, enum usb_dc_status_code cb_s
 		usb_offline_clean();
 		break;
 	case USB_DC_SUSPEND:
-		LOG_INF("USB device suspended");
 		online = false;
 		usb_offline_clean();
 		break;
