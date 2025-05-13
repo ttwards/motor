@@ -190,8 +190,8 @@ void chassis_thread(void *arg1, void *arg2, void *arg3)
 			}
 		}
 
-		float currentSpeedX[CHASSIS_WHEEL_COUNT] = {0};
-		float currentSpeedY[CHASSIS_WHEEL_COUNT] = {0};
+		// float currentSpeedX[CHASSIS_WHEEL_COUNT] = {0};
+		// float currentSpeedY[CHASSIS_WHEEL_COUNT] = {0};
 		data->chassis_status.speedX = 0;
 		data->chassis_status.speedY = 0;
 		data->chassis_status.gyro = 0;
