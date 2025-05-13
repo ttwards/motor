@@ -227,7 +227,6 @@ static int sbus_init(const struct device *dev)
 // 获取通道百分比
 float sbus_getchannel_percentage(const struct device *dev, uint8_t channelid)
 {
-	struct sbus_driver_data *data = dev->data;
 	int chan = sbus_parseframe_chan(dev, channelid);
 	float scale = 2.0f / (SBUS_MAX - SBUS_MIN);
 	float out = (int16_t)(chan - 1024) * scale;
