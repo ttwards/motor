@@ -219,10 +219,10 @@ struct wheel_driver_api steerwheel_driver_api = {
 
 #define STEERWHEEL_DEVICE_DEFINE(inst)                                                             \
 	static steerwheel_data_t steerwheel_data_##inst = {                                        \
-		.status = {0, 0, true},                                                            \
-		.target = {0, 0, true},                                                            \
+		.status = {.speed = 0.0f, .angle = 0.0f, .restricted = true},                      \
+		.target = {.speed = 0.0f, .angle = 0.0f, .restricted = true},                      \
 		.negative = false,                                                                 \
-		.set_rpm = 0,                                                                      \
+		.set_rpm = 0.0f,                                                                   \
 	};                                                                                         \
 	static const steerwheel_cfg_t steerwheel_cfg_##inst = {                                    \
 		.common = DT_WHEEL_CONFIG_GET(inst),                                               \

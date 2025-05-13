@@ -31,7 +31,6 @@ typedef uint16_t allmotor_id_t;
 	find the rpm in motor_cans->target_rpm[canbus_id] */
 typedef uint16_t motor_id_t;
 
-static struct k_sem dji_thread_sem;
 struct k_work_q dji_work_queue;
 
 struct motor_controller {
@@ -107,7 +106,7 @@ struct dji_motor_config {
 extern struct motor_controller ctrl_structs[];
 
 // 函数声明
-void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
+static void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
 
 void dji_speed_limit(const struct device *dev, float max_speed, float min_speed);
 void dji_torque_limit(const struct device *dev, float max_torque, float min_torque);
@@ -115,10 +114,12 @@ int dji_set_speed(const struct device *dev, float speed_rpm);
 int dji_set_angle(const struct device *dev, float angle);
 int dji_set_torque(const struct device *dev, float torque);
 float dji_set_zero(const struct device *dev);
+
 float dji_get_angle(const struct device *dev);
 float dji_get_speed(const struct device *dev);
 float dji_get_torque(const struct device *dev);
 int dji_init(const struct device *dev);
+
 void dji_control(const struct device *dev, enum motor_cmd cmd);
 
 void dji_tx_handler(struct k_work *work);

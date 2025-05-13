@@ -57,8 +57,7 @@
 #define DT_DRIVER_GET_CANBUS_ID(inst) DT_NODE_CHILD_IDX(DT_DRIVER_INST_GET_CANBUS_IDT(inst))
 
 #define DMOTOR_DATA_INST(inst)                                                                     \
-	static struct dji_motor_data dji_motor_data_##inst = {                                     \
-		.common = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                     \
+	static __unused struct dji_motor_data dji_motor_data_##inst = {                            \
 		.canbus_id = DT_DRIVER_GET_CANBUS_ID(inst),                                        \
 		.ctrl_struct = &ctrl_structs[DT_DRIVER_GET_CANBUS_ID(inst)],                       \
 		.pid_angle_input = 0,                                                              \
@@ -68,8 +67,8 @@
 #define DMOTOR_CONFIG_INST(inst)                                                                   \
 	static const struct dji_motor_config dji_motor_cfg_##inst = {                              \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (DT_PROP(DT_DRV_INST(inst), is_gm6020) ? 1.0f : 4.0f) *              \
-			      DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),                   \
+		.gear_ratio = (float)(DT_PROP(DT_DRV_INST(inst), is_gm6020) ? 1.0f : 4.0f) *       \
+			      (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),            \
 		.is_gm6020 = DT_PROP(DT_DRV_INST(inst), is_gm6020),                                \
 		.is_m3508 = DT_PROP(DT_DRV_INST(inst), is_m3508),                                  \
 		.is_m2006 = DT_PROP(DT_DRV_INST(inst), is_m2006),                                  \
