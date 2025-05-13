@@ -138,7 +138,7 @@ static inline chassis_status_t *z_impl_chassis_get_status(const struct device *d
 	return NULL;
 }
 
-static void chassis_update_sensor(const struct device *dev, struct pos_data *pos_data)
+__unused static void chassis_update_sensor(const struct device *dev, struct pos_data *pos_data)
 {
 	chassis_data_t *data = dev->data;
 	data->prevTime = data->currTime;
@@ -149,10 +149,10 @@ static void chassis_update_sensor(const struct device *dev, struct pos_data *pos
 						: data->chassis_sensor_data.Yaw;
 }
 
-static void chassis_set_enabled(const struct device *dev, bool enabled)
+__unused static void chassis_set_enabled(const struct device *dev, bool enabled)
 {
 	chassis_data_t *data = dev->data;
-	chassis_cfg_t *cfg = dev->config;
+	chassis_cfg_t *cfg = (chassis_cfg_t *)dev->config;
 	data->enabled = enabled;
 	if (!enabled) {
 		for (int i = 0; i < CHASSIS_WHEEL_COUNT; i++) {

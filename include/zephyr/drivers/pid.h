@@ -29,7 +29,7 @@ extern "C" {
 #define STATIC_VOID __attribute__((unused)) static void
 #define STATIC      __attribute__((unused)) static
 
-#define PID_INS_CAT_NAME(node_name, name) DT_CAT(node_name, name)
+#define PID_INS_CAT_NAME(node_name, name) DT_CAT3(node_name, _, name)
 #define PID_INS_NAME(node_id, name)       PID_INS_CAT_NAME(DT_NODE_FULL_NAME_UNQUOTED(node_id), name)
 
 #define PID_NEW_INSTANCE(node_id, name)                                                            \
@@ -58,7 +58,7 @@ struct pid_data {
 	float err_integral;
 	float err_derivate;
 	float ratio;
-	struct device *pid_dev;
+	const struct device *pid_dev;
 	uint32_t *curr_time;
 	uint32_t *prev_time;
 	float *output;
@@ -88,7 +88,7 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		return;
 	}
 	if (!pid_para->mit) {
-		if (!isnanf(ki) && !float_equal(ki, 0)) {
+		if ((ki == ki) && !float_equal(ki, 0)) {
 			data->err_integral += (err * deltaT) / ki;
 			if (pid_para->integral_limit != 0) {
 				if (fabsf(data->err_integral) > pid_para->integral_limit) {
@@ -98,8 +98,8 @@ STATIC_VOID pid_calc(struct pid_data *data)
 				}
 			}
 		}
-		if (!isnanf(kd)) {
-			if (isnanf(pid_para->detri_lpf)) {
+		if ((kd == kd)) {
+			if ((pid_para->detri_lpf != pid_para->detri_lpf)) {
 				data->err_derivate =
 					kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT;
 			} else {
@@ -121,7 +121,7 @@ STATIC_VOID pid_calc(struct pid_data *data)
 		}
 		return;
 	} else {
-		if (!isnanf(ki) && !float_equal(ki, 0)) {
+		if ((ki == ki) && !float_equal(ki, 0)) {
 			data->err_integral += (err * deltaT) / ki;
 			if (pid_para->integral_limit != 0) {
 				if (fabsf(data->err_integral) > pid_para->integral_limit) {
@@ -131,8 +131,8 @@ STATIC_VOID pid_calc(struct pid_data *data)
 				}
 			}
 		}
-		if (!isnanf(kd)) {
-			if (isnanf(pid_para->detri_lpf)) {
+		if ((kd == kd)) {
+			if ((pid_para->detri_lpf != pid_para->detri_lpf)) {
 				data->err_derivate =
 					kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT;
 			} else {
@@ -170,15 +170,9 @@ STATIC float pid_calc_in(struct pid_data *data, float error, float deltaT_us)
 	if (deltaT_us == 0) {
 		return 0;
 	}
-	float *out;
-	if (data->output != NULL) {
-		out = data->output;
-	} else {
-		float o;
-		out = &o;
-	}
+	float out;
 	if (!pid_para->mit) {
-		if (!isnanf(ki) && !float_equal(ki, 0)) {
+		if ((ki == ki) && !float_equal(ki, 0)) {
 			data->err_integral += (error * deltaT_us) / ki;
 			if (pid_para->integral_limit != 0) {
 				if (fabsf(data->err_integral) > pid_para->integral_limit) {
@@ -188,8 +182,8 @@ STATIC float pid_calc_in(struct pid_data *data, float error, float deltaT_us)
 				}
 			}
 		}
-		if (!isnanf(kd)) {
-			if (isnanf(pid_para->detri_lpf)) {
+		if ((kd == kd)) {
+			if ((pid_para->detri_lpf != pid_para->detri_lpf)) {
 				data->err_derivate =
 					kd * (*(data->detri_ref) - *(data->detri_curr)) / deltaT_us;
 			} else {
@@ -202,12 +196,12 @@ STATIC float pid_calc_in(struct pid_data *data, float error, float deltaT_us)
 		}
 		//   LOG_INF("integral: %d, derivate: %d", to16t(ki * (err * deltaT) / 1000000),
 		//           to16t(kd * 1000000 * err / deltaT));
-		*out = kp * (error + data->err_integral + data->err_derivate) +
-		       pid_para->output_offset;
-		if (pid_para->output_limit != 0 && fabsf(*out) > pid_para->output_limit) {
-			*out = *out > 0 ? pid_para->output_limit : -pid_para->output_limit;
+		out = kp * (error + data->err_integral + data->err_derivate) +
+		      pid_para->output_offset;
+		if (pid_para->output_limit != 0 && fabsf(out) > pid_para->output_limit) {
+			out = out > 0 ? pid_para->output_limit : -pid_para->output_limit;
 		}
-		return *out;
+		return out;
 	}
 	return NAN;
 }

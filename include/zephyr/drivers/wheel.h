@@ -25,8 +25,8 @@ extern "C" {
 
 #define DT_WHEEL_CONFIG_GET(inst)                                                                  \
 	{                                                                                          \
-		.angle_offset = DT_STRING_UNQUOTED(DT_DRV_INST(inst), angle_offset),               \
-		.wheel_radius = DT_STRING_UNQUOTED(DT_DRV_INST(inst), wheel_radius) * 0.1f,        \
+		.angle_offset = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), angle_offset),        \
+		.wheel_radius = (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), wheel_radius) * 0.1f, \
 	}
 
 typedef struct {
