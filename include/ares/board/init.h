@@ -7,7 +7,7 @@
 
 struct led_rgb;
 
-static inline void led_set_rgb(struct led_rgb *color);
+void led_set_rgb(struct led_rgb *color);
 void led_serivce_func(void *p1, void *p2, void *p3);
 void board_init(void);
 
