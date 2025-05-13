@@ -42,8 +42,10 @@ static float current_temp = 25.0f;
 static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(DT_CHOSEN(ares_pwm));
 static float target_temp = 50.0f;
 static float temp_pwm_output = 19900000.0f;
-#ifdef DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
+
+#if DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
 PID_NEW_INSTANCE(DT_NODELABEL(imu_temp_pid), ins)
+
 struct pid_data *temp_pwm_pid = &PID_INS_NAME(DT_NODELABEL(imu_temp_pid), ins);
 #else
 #error "No PID instance for IMU temperature control"
@@ -122,7 +124,6 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 			   float *init_q4, float *accel)
 {
 	float acc_init[3] = {0};
-	float single_acc_bias[3] = {0};
 	float gravity_norm[3] = {0, 0, 1}; // 导航系重力加速度矢量,归一化后为(0,0,1)
 	float axis_rot[3] = {0};           // 旋转轴
 	float acc[3] = {0};
@@ -294,7 +295,6 @@ static struct sensor_trigger gyro_trig = {
 
 void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev)
 {
-	int ret = 0;
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
 	pwm_set_pulse_dt(&pwm, 20000000);
 
