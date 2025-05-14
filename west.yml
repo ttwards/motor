@@ -18,6 +18,7 @@ manifest:
         # strictly needed by the application.
         name-allowlist:
           - cmsis      # required by the ARM port
+          - cmsis_6
           - cmsis-dsp
           - hal_st
           - hal_stm32  # required by the nucleo_f302r8 board (STM32 based)
