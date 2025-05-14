@@ -13,6 +13,18 @@ menuconfig ARES
 module = ARES
 module-str = ARES
 
+config USB_BULK_INTERFACE
+	bool "USB_BULK_INTERFACE"
+	help
+	  Enable USB_BULK_INTERFACE
+
+config BOARD_LOG_LEVEL
+	int "BOARD_LOG_LEVEL"
+	range 0 4
+	default 3
+	help
+	  Set BOARD_LOG_LEVEL
+
 config IMU_PWM_TEMP_CTRL
 	select PID
     bool "IMU_PWM_TEMP_CTRL"
