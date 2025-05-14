@@ -16,7 +16,7 @@
 #include <zephyr/debug/thread_analyzer.h>
 #include "init.h"
 
-LOG_MODULE_REGISTER(board_init, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(board_init, CONFIG_BOARD_LOG_LEVEL);
 
 struct led_rgb {
 	uint8_t r;
@@ -139,8 +139,8 @@ int set_rgb_led_brightness(struct led_rgb *color)
 		return ret;
 	}
 
-	LOG_DBG("RGB LED brightness set: R=%u, G=%u, B=%u (pulse width R:%u, G:%u, B:%u ns)",
-		color->r, color->g, color->b, pulse_r, pulse_g, pulse_b);
+	// LOG_DBG("RGB LED brightness set: R=%u, G=%u, B=%u (pulse width R:%u, G:%u, B:%u ns)",
+	// 	color->r, color->g, color->b, pulse_r, pulse_g, pulse_b);
 
 	return 0;
 }
@@ -182,10 +182,12 @@ void led_serivce_func(void *p1, void *p2, void *p3)
 	// uint8_t blue = 0u;
 	// bool blue_decrease = false;
 
+	uint32_t cnt = 0;
+
 	while (1) {
 		// 获取统计数据
 		k_thread_runtime_stats_all_get(&idle_stats_old);
-		k_msleep(50);
+		k_msleep(100);
 		k_thread_runtime_stats_all_get(&idle_stats_new);
 
 		// 计算CPU使用率 (0-100)
@@ -213,7 +215,10 @@ void led_serivce_func(void *p1, void *p2, void *p3)
 		color = RGB(red, green, 0);
 		set_rgb_led_brightness(&color);
 
-		LOG_DBG("CPU: %.1f%%, RGB: %02x%02x%02x", (double)cpu_usage, red, green, 0);
+		if (cnt % 10 == 0) {
+			LOG_DBG("CPU: %.1f%%, RGB: %02x%02x%02x", (double)cpu_usage, red, green, 0);
+		}
+		cnt++;
 	}
 }
 
@@ -240,10 +245,13 @@ void led_init(void)
 			NULL, -1, 0, K_NO_WAIT);
 }
 
-void board_init(void)
+int board_init(void)
 {
 	k_sleep(K_MSEC(550));
 	PWR_INIT
 	LED_INIT
 	LOG_INF("Board init done.");
+	return 0;
 }
+
+SYS_INIT(board_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
