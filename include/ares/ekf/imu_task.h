@@ -26,8 +26,6 @@ typedef struct {
 
 	float lpf_Accel[3]; // 加速度低通滤波
 
-	uint8_t flag;
-
 	uint32_t gyro_prev_cyc;
 	uint32_t accel_prev_cyc;
 

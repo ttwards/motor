@@ -40,6 +40,7 @@ typedef struct {
 	float AccelBeta[3]; // 加速度计标定系数
 
 	float accel_dt; // 加速度计采样周期
+	float gyro_dt;  // 陀螺仪采样周期
 
 	float g; // 重力加速度
 
@@ -63,7 +64,6 @@ typedef struct {
 	float Q2; // 陀螺仪零偏过程噪声
 	float R;  // 加速度计量测噪声
 
-	float dt; // 姿态更新周期
 	mat ChiSquare;
 	float ChiSquare_Data[1];      // 卡方检验检测函数
 	float ChiSquareTestThreshold; // 卡方检验阈值
@@ -76,6 +76,9 @@ typedef struct {
 	uint64_t UpdateTime;
 
 	bool hasStoredBias; // 是否存储过偏置
+
+	// New fields for split update
+	float RawGyro[3]; // Store raw gyro for bias estimation
 } QEKF_INS_t;
 
 extern QEKF_INS_t QEKF_INS;
@@ -83,8 +86,10 @@ extern float chiSquare;
 extern float ChiSquareTestThreshold;
 void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float process_noise2,
 			    float measure_noise, float lambda, float lpf);
-void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, float az,
-			      float accel_dt, float gyro_dt);
+
+void IMU_QuaternionEKF_Predict_Update(float gx, float gy, float gz, float gyro_dt);
+void IMU_QuaternionEKF_Measurement_Update(float gx, float gy, float gz, float gyro_dt, float ax,
+					  float ay, float az, float accel_dt);
 void CalcBias(float *q, float *accel, float g, float *bias);
 
 #define default_EKF_F                                                                              \

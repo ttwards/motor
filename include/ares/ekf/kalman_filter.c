@@ -398,7 +398,7 @@ float *Kalman_Filter_Update(KalmanFilter_t *kf)
 		kf->User_Func2_f(kf);
 	}
 
-	if (kf->MeasurementValidNum != 0 || kf->UseAutoAdjustment == 0) {
+	if ((kf->MeasurementValidNum != 0 || kf->UseAutoAdjustment == 0) && QEKF_INS->StableFlag) {
 		// 量测更新
 		// 3. K(k) = P'(k)·HT / (H·P'(k)·HT + R)
 		Kalman_Filter_SetK(kf);
@@ -420,7 +420,6 @@ float *Kalman_Filter_Update(KalmanFilter_t *kf)
 
 		// 修正方差
 		// 5. P(k) = (1-K(k)·H)·P'(k) ==> P(k) = P'(k)-K(k)·H·P'(k)
-		// 230us
 		Kalman_Filter_P_Update(kf);
 	} else {
 		// 无有效量测,仅预测

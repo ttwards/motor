@@ -10,6 +10,7 @@
 #include "zephyr/sys/printk.h"
 #include "zephyr/sys/time_units.h"
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/_types.h>
@@ -20,7 +21,11 @@
 
 LOG_MODULE_REGISTER(imu_task, LOG_LEVEL_INF);
 
-static int count = 0;
+static int accel_count = 0;
+static int gyro_count = 0;
+
+#define MEASURE_UPDATE_GAP 8
+#define PREDICT_UPDATE_GAP 1
 
 static IMU_Param_t IMU_Param;
 
@@ -70,41 +75,44 @@ int IMU_temp_pwm_set(const struct device *dev)
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 }
 
-static inline void IMU_Sensor_handle_update(INS_t *data)
+static void IMU_Sensor_update_predict(INS_t *data)
 {
-	if (data->flag != 0b11) {
-		return;
-	}
+	float gyro_dt = k_cyc_to_us_near32(data->gyro_curr_cyc - data->gyro_prev_cyc) * 0.000001f;
+	data->gyro_prev_cyc = data->gyro_curr_cyc;
+	data->gyro_curr_cyc = k_cycle_get_32();
 
-	data->flag = 0;
-	count++;
+	IMU_QuaternionEKF_Predict_Update(INS.Gyro[X], INS.Gyro[Y], INS.Gyro[Z], gyro_dt);
+}
+
+static void IMU_Sensor_update_measurement(INS_t *data)
+{
+	float gyro_dt = k_cyc_to_us_near32(data->gyro_curr_cyc - data->gyro_prev_cyc) * 0.000001f;
+	data->gyro_prev_cyc = data->gyro_curr_cyc;
+	data->gyro_curr_cyc = k_cycle_get_32();
 
 	float accel_dt =
 		k_cyc_to_us_near32(data->accel_curr_cyc - data->accel_prev_cyc) * 0.000001f;
-	float gyro_dt = k_cyc_to_us_near32(data->gyro_curr_cyc - data->gyro_prev_cyc) * 0.000001f;
+	data->accel_prev_cyc = data->accel_curr_cyc;
+	data->accel_curr_cyc = k_cycle_get_32();
 
-	IMU_QuaternionEKF_Update(INS.Gyro[X], INS.Gyro[Y], INS.Gyro[Z], INS.Accel[X], INS.Accel[Y],
-				 INS.Accel[Z], accel_dt, gyro_dt);
+	IMU_QuaternionEKF_Measurement_Update(INS.Gyro[X], INS.Gyro[Y], INS.Gyro[Z], gyro_dt,
+					     INS.Accel[X], INS.Accel[Y], INS.Accel[Z], accel_dt);
+}
 
+static void IMU_Sensor_temp_control(INS_t *data)
+{
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-	if (count % 50 == 0) {
+	if (accel_count % 50 == 0) {
 		IMU_temp_read(data->accel_dev);
 
 		IMU_temp_pwm_set(data->accel_dev);
 
 		if (current_temp >= 65) {
-			printk("Current Temp: %.2f, PWM: %d\n", (double)current_temp,
-			       (int)temp_pwm_output);
+			LOG_WRN("Current Temp: %.2f, PWM: %d\n", (double)current_temp,
+				(int)temp_pwm_output);
 		}
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
-
-	data->gyro_prev_cyc = data->gyro_curr_cyc;
-	data->accel_prev_cyc = data->accel_curr_cyc;
-
-	if (data->update_cb != NULL) {
-		data->update_cb(&QEKF_INS);
-	}
 }
 
 void IMU_Sensor_set_update_cb(update_cb_t cb)
@@ -244,22 +252,17 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	// init_q4[3]); printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
 }
 
-int acnt = 0;
 static void IMU_Sensor_trig_handler(const struct device *dev, const struct sensor_trigger *trigger)
 {
 	if (trigger->type != SENSOR_TRIG_DATA_READY) {
 		return;
 	}
-	uint32_t current_cyc = k_cycle_get_32();
-	sensor_sample_fetch(dev);
-	acnt++;
 
-	if (trigger->chan == SENSOR_CHAN_ACCEL_XYZ) {
+	if (trigger->chan == SENSOR_CHAN_ACCEL_XYZ && accel_count++ % MEASURE_UPDATE_GAP == 0) {
+		sensor_sample_fetch(dev);
+
 		struct sensor_value accel_data[3];
 		sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, accel_data);
-
-		INS.flag |= 1;
-		INS.accel_curr_cyc = current_cyc;
 
 		INS.Accel[X] = (sensor_value_to_float(&accel_data[X]) - QEKF_INS.AccelBias[X]) /
 			       QEKF_INS.AccelBeta[X];
@@ -267,19 +270,29 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 			       QEKF_INS.AccelBeta[Y];
 		INS.Accel[Z] = (sensor_value_to_float(&accel_data[Z]) - QEKF_INS.AccelBias[Z]) /
 			       QEKF_INS.AccelBeta[Z];
-	} else if (trigger->chan == SENSOR_CHAN_GYRO_XYZ) {
+
+		IMU_Sensor_update_measurement(&INS);
+	} else if (trigger->chan == SENSOR_CHAN_GYRO_XYZ &&
+		   gyro_count++ % PREDICT_UPDATE_GAP == 0) {
+		sensor_sample_fetch(dev);
+
 		struct sensor_value gyro_data[3];
 		sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyro_data);
-
-		INS.flag |= 2;
-		INS.gyro_curr_cyc = current_cyc;
 
 		INS.Gyro[0] = sensor_value_to_float(&gyro_data[0]) - QEKF_INS.GyroBias[0];
 		INS.Gyro[1] = sensor_value_to_float(&gyro_data[1]) - QEKF_INS.GyroBias[1];
 		INS.Gyro[2] = sensor_value_to_float(&gyro_data[2]) - QEKF_INS.GyroBias[2];
+
+		IMU_Sensor_update_predict(&INS);
 	}
 
-	IMU_Sensor_handle_update(&INS);
+	if (INS.update_cb != NULL) {
+		INS.update_cb(&QEKF_INS);
+	}
+
+	if (accel_count % 80 == 0) {
+		IMU_Sensor_temp_control(&INS);
+	}
 }
 
 float init_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f}; // [w, x, y, z]
@@ -319,7 +332,7 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 	int current_cyc = k_cycle_get_32();
 	INS.gyro_prev_cyc = current_cyc;
 	INS.accel_prev_cyc = current_cyc;
-	INS.flag = 0;
+
 	INS.accel_dev = accel_dev;
 	INS.gyro_dev = gyro_dev;
 
