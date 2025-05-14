@@ -110,17 +110,10 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		uint16_t len = evt->data.rx.len;
 
 		uint8_t *ptr_offset = p + find_begin(p, len);
-		if (ptr_offset >= p && len >= 25 && ptr_offset < p + len) {
+		if (ptr_offset >= p && ptr_offset + 25 < p + len) {
 			memcpy(data->data, ptr_offset, 25);
 		}
 		data->recv_cyc = k_cycle_get_32();
-		// 请求新的接收缓冲区
-		void *new_buf = NULL;
-		err = k_mem_slab_alloc(&sbus_uart_slab, &new_buf, K_NO_WAIT);
-
-		if (err == 0 && new_buf != NULL && ((uintptr_t)new_buf & 0x3) == 0) {
-			err = uart_rx_buf_rsp(dev, new_buf, BUF_SIZE);
-		}
 		break;
 	}
 
@@ -236,7 +229,6 @@ float sbus_getchannel_percentage(const struct device *dev, uint8_t channelid)
 // 获取通道数字值
 int sbus_getchannel_digital(const struct device *dev, uint8_t channelid)
 {
-	struct sbus_driver_data *data = dev->data;
 	int chan = sbus_parseframe_chan(dev, channelid);
 	return chan;
 }
