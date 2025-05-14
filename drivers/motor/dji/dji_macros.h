@@ -57,9 +57,23 @@
 #define DT_DRIVER_GET_CANBUS_ID(inst) DT_NODE_CHILD_IDX(DT_DRIVER_INST_GET_CANBUS_IDT(inst))
 
 #define DMOTOR_DATA_INST(inst)                                                                     \
-	static __unused struct dji_motor_data dji_motor_data_##inst = {                            \
+	static struct dji_motor_data dji_motor_data_##inst = {                                     \
+		.common = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                     \
 		.canbus_id = DT_DRIVER_GET_CANBUS_ID(inst),                                        \
 		.ctrl_struct = &ctrl_structs[DT_DRIVER_GET_CANBUS_ID(inst)],                       \
+		.online = false,                                                                   \
+		.convert_num = 0,                                                                  \
+		.current_mode_index = -1,                                                          \
+		.RAWangle = 0,                                                                     \
+		.RAWprev_angle = 0,                                                                \
+		.RAWcurrent = 0,                                                                   \
+		.RAWrpm = 0,                                                                       \
+		.RAWtemp = 0,                                                                      \
+		.angle_add = 0,                                                                    \
+		.curr_time = 0,                                                                    \
+		.prev_time = 0,                                                                    \
+		.missed_times = 0,                                                                 \
+		.angle_offset = 0,                                                                 \
 		.pid_angle_input = 0,                                                              \
 		.pid_ref_input = 0,                                                                \
 	};
