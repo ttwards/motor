@@ -226,10 +226,10 @@ int dji_set(const struct device *dev, motor_status_t *status)
 
 	dji_set_mode(dev, status->mode);
 
-	if (status->speed_limit[0] > 0) {
+	if (status->speed_limit[0] > 0 || status->speed_limit[1] > 0) {
 		dji_speed_limit(dev, status->speed_limit[1], status->speed_limit[0]);
 	}
-	if (status->torque_limit[0] > 0) {
+	if (status->torque_limit[0] > 0 || status->torque_limit[1] > 0) {
 		dji_torque_limit(dev, status->torque_limit[1], status->torque_limit[0]);
 	}
 
