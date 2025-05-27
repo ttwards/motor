@@ -105,19 +105,10 @@ struct dji_motor_config {
 // 全局变量声明
 extern struct motor_controller ctrl_structs[];
 
-// 函数声明
-static void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
+int dji_set_mode(const struct device *dev, enum motor_mode mode);
 
-void dji_speed_limit(const struct device *dev, float max_speed, float min_speed);
-void dji_torque_limit(const struct device *dev, float max_torque, float min_torque);
-int dji_set_speed(const struct device *dev, float speed_rpm);
-int dji_set_angle(const struct device *dev, float angle);
-int dji_set_torque(const struct device *dev, float torque);
-float dji_set_zero(const struct device *dev);
-
-float dji_get_angle(const struct device *dev);
-float dji_get_speed(const struct device *dev);
-float dji_get_torque(const struct device *dev);
+int dji_get(const struct device *dev, motor_status_t *status);
+int dji_set(const struct device *dev, motor_status_t *status);
 int dji_init(const struct device *dev);
 
 void dji_control(const struct device *dev, enum motor_cmd cmd);
@@ -138,15 +129,9 @@ K_WORK_DEFINE(dji_init_handle, dji_init_handler);
 K_TIMER_DEFINE(dji_miss_handle_timer, NULL, NULL);
 
 static const struct motor_driver_api motor_api_funcs = {
-	.motor_get_speed = dji_get_speed,
-	.motor_get_torque = dji_get_torque,
-	.motor_get_angle = dji_get_angle,
-	.motor_set_speed = dji_set_speed,
-	.motor_set_torque = dji_set_torque,
-	.motor_set_angle = dji_set_angle,
+	.motor_get = dji_get,
+	.motor_set = dji_set,
 	.motor_control = dji_control,
-	.motor_limit_speed = dji_speed_limit,
-	.motor_limit_torque = dji_torque_limit,
 };
 
 extern const struct device *can_devices[];

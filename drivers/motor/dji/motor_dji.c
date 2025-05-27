@@ -135,7 +135,6 @@ void dji_torque_limit(const struct device *dev, float max_torque, float min_torq
 int dji_set_speed(const struct device *dev, float speed_rpm)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
 
 	if (speed_rpm > data->common.speed_limit[1]) {
 		speed_rpm = data->common.speed_limit[1];
@@ -144,56 +143,20 @@ int dji_set_speed(const struct device *dev, float speed_rpm)
 	}
 
 	data->target_rpm = speed_rpm;
-	data->current_mode_index = -1;
-	for (int i = 0; i < sizeof(cfg->common.pid_datas) / sizeof(cfg->common.pid_datas[0]); i++) {
-		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-			if (data->current_mode_index == -1) {
-				data->current_mode_index = i;
-				data->target_torque = 0;
-				return -ENOEXEC;
-			}
-			break;
-		}
-		if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
-			pid_calc(cfg->common.pid_datas[i]);
-			data->current_mode_index = i;
-		}
-	}
-	// ctrl_struct->current[id] = pid_calc(dev);
+
 	return 0;
 }
 
 int dji_set_angle(const struct device *dev, float angle)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
-
 	data->target_angle = angle;
-
-	data->current_mode_index = -1;
-	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
-		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-			if (data->current_mode_index == -1) {
-				data->current_mode_index = i;
-				data->target_torque = 0;
-				return -ENOEXEC;
-			}
-			break;
-		}
-		if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
-			pid_calc(cfg->common.pid_datas[i]);
-			data->current_mode_index = i;
-		}
-	}
-
-	// ctrl_struct->current[id] = pid_calc(dev);
 	return 0;
 }
 
 int dji_set_torque(const struct device *dev, float torque)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
 
 	if (torque > data->common.torque_limit[1]) {
 		torque = data->common.torque_limit[1];
@@ -202,17 +165,74 @@ int dji_set_torque(const struct device *dev, float torque)
 	}
 
 	data->target_torque = torque;
+
+	return 0;
+}
+
+int dji_set_mode(const struct device *dev, enum motor_mode mode)
+{
+	struct dji_motor_data *data = dev->data;
+	const struct dji_motor_config *cfg = dev->config;
+
+	char mode_str[10];
+	switch (mode) {
+	case ML_TORQUE:
+		strcpy(mode_str, "torque");
+		break;
+	case ML_ANGLE:
+		strcpy(mode_str, "angle");
+		break;
+	case ML_SPEED:
+		strcpy(mode_str, "speed");
+		break;
+	default:
+		LOG_ERR("Unsupported motor mode: %d", mode);
+		return -ENOSYS;
+	}
+
+	data->current_mode_index = -1;
+
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
 		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
 			data->current_mode_index = i;
 			break;
 		}
-		if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
+		if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
 			pid_calc(cfg->common.pid_datas[i]);
 			data->current_mode_index = i;
 		}
 	}
-	// ctrl_struct->current[id] = pid_calc(dev);
+
+	if (data->current_mode_index == -1) {
+		LOG_ERR("No motor mode found for %s", mode_str);
+		return -ENOSYS;
+	}
+
+	return 0;
+}
+
+int dji_set(const struct device *dev, motor_status_t *status)
+{
+	if (status->mode == ML_TORQUE) {
+		dji_set_torque(dev, status->torque);
+	} else if (status->mode == ML_ANGLE) {
+		dji_set_angle(dev, status->angle + 360.0f * (float)status->round_cnt);
+	} else if (status->mode == ML_SPEED) {
+		dji_set_speed(dev, status->rpm);
+	} else {
+		LOG_ERR("Unsupported motor mode: %d", status->mode);
+		return -ENOSYS;
+	}
+
+	dji_set_mode(dev, status->mode);
+
+	if (status->speed_limit[0] > 0) {
+		dji_speed_limit(dev, status->speed_limit[1], status->speed_limit[0]);
+	}
+	if (status->torque_limit[0] > 0) {
+		dji_torque_limit(dev, status->torque_limit[1], status->torque_limit[0]);
+	}
+
 	return 0;
 }
 
@@ -231,7 +251,7 @@ void dji_control(const struct device *dev, enum motor_cmd cmd)
 	case DISABLE_MOTOR:
 		data->online = false;
 		break;
-	case SET_ZERO_OFFSET:
+	case SET_ZERO:
 		data->angle_add = 0;
 		data->common.angle = 0;
 		break;
@@ -244,22 +264,32 @@ void dji_control(const struct device *dev, enum motor_cmd cmd)
 	}
 }
 
-float dji_get_angle(const struct device *dev)
+int dji_get(const struct device *dev, motor_status_t *status)
 {
 	struct dji_motor_data *data = dev->data;
-	return fmodf(data->common.angle, 360.0f);
-}
+	const struct dji_motor_config *cfg = dev->config;
 
-float dji_get_speed(const struct device *dev)
-{
-	struct dji_motor_data *data = dev->data;
-	return data->common.rpm;
-}
+	if (strcmp(cfg->common.capabilities[data->current_mode_index], "torque") == 0) {
+		status->mode = ML_TORQUE;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "angle") == 0) {
+		status->mode = ML_ANGLE;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "speed") == 0) {
+		status->mode = ML_SPEED;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "mit") == 0) {
+		status->mode = MIT;
+	}
 
-float dji_get_torque(const struct device *dev)
-{
-	struct dji_motor_data *data = dev->data;
-	return data->common.torque;
+	status->angle = fmodf(data->common.angle, 360.0f);
+	status->rpm = data->common.rpm;
+	status->torque = data->common.torque;
+	status->round_cnt = data->common.round_cnt;
+
+	status->speed_limit[0] = data->common.speed_limit[0];
+	status->speed_limit[1] = data->common.speed_limit[1];
+	status->torque_limit[0] = data->common.torque_limit[0];
+	status->torque_limit[1] = data->common.torque_limit[1];
+
+	return 0;
 }
 
 int dji_init(const struct device *dev)
