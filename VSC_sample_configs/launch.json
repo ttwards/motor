@@ -1,0 +1,95 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+		{
+            "name": "LaunchC",
+            "device": "STM32F407IGHx",
+            "cwd": "${workspaceFolder}",
+            "executable": "build/zephyr/zephyr.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+                // "boards/dji/robomaster_board_c/support/jlink.cfg",
+                "target/stm32f4x.cfg",
+				"interface/cmsis-dap.cfg",
+                // "esp32dap.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
+            "preRestartCommands": [
+                // "monitor reset halt"
+            ],
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 1
+            },
+			"showDevDebugOutput": "raw"
+        },
+        {
+            "name": "AttachC",
+            "device": "STM32F407IGHx",
+            "cwd": "${workspaceFolder}",
+            "executable": "build/zephyr/zephyr.elf",
+            "request": "attach",
+            "type": "cortex-debug",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+                "boards/dji/robomaster_board_c/support/jlink.cfg",
+				// "interface/cmsis-dap.cfg",
+                // "target/stm32f4x.cfg",
+            ],
+			"svdFile": "${workspaceFolder}/boards/dji/robomaster_board_c/support/stm32f407.svd",
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"
+        },
+        {
+        "name": "LaunchDM",
+            "device": "STM32H723VGTx",
+            "cwd": "${workspaceFolder}",
+            "executable": "build/zephyr/zephyr.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+				"boards/damiao/dm_mc02/support/jlink.cfg",
+				// "scripts/openocd.cfg"
+            ],
+            "svdFile": "${workspaceFolder}/boards/damiao/dm_mc02/support/stm32h723.svd",
+            "gdbPath": "/opt/homebrew/bin/arm-none-eabi-gdb",
+			"overrideLaunchCommands": [
+                // "source ${workspaceFolder}/scripts/ares_gdb_plugin.py",
+                // "monitor reset halt",
+                // "-target-download",
+				// "gdb_memory_map disable",
+            ],
+            // "liveWatch": {
+            //     "enabled": true,
+            //     "samplesPerSecond": 1
+            // },
+			"showDevDebugOutput": "raw",
+        },
+        {
+            "name": "AttachDM",
+            "device": "STM32H723VGHx",
+            "cwd": "${workspaceFolder}",
+            "executable": "build/zephyr/zephyr.elf",
+            "request": "attach",
+            "type": "cortex-debug",
+            // "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+                "boards/damiao/dm_mc02/support/jlink.cfg"
+            ],
+			"liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 1
+            },
+            "gdbPath": "${userHome}/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb"
+        },
+
+    ]
+}

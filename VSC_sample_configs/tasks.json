@@ -1,0 +1,66 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "west build -p always -b robomaster_board_c app/IMU",
+            "args": [],
+            "options": {
+                "env": {
+                    "PATH": "/opt/miniconda3/bin:${env:PATH}"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Build the Zephyr project"
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "west flash --runner openocd",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Flash the Zephyr project to the board"
+        },
+        {
+            "label": "Build & Flash",
+            "type": "shell",
+            "command": "west build -p always -b robomaster_board_c app/IMU && west flash --runner openocd",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Build and flash the Zephyr project"
+        },
+        {
+            "label": "Tidy",
+            "type": "shell",
+            "command": "west build -t tidy",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Tidy up codes"
+        },
+        {
+            "label": "Monitor",
+            "type": "shell",
+            "command": "pyocd rtt -t STM32F407IGHx",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [],
+            "detail": "Monitor via RTT Console"
+        }
+    ]
+}
