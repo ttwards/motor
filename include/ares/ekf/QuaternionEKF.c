@@ -73,6 +73,45 @@ void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float 
 	QEKF_INS.g = PHY_G;
 #endif
 
+	// Initialize other members of QEKF_INS
+	QEKF_INS.hasStoredBias = FALSE;
+	QEKF_INS.gyro_dt = 0.0f;
+	QEKF_INS.accel_dt = 0.0f;
+	memset(QEKF_INS.RawGyro, 0, sizeof(QEKF_INS.RawGyro));
+	memset(QEKF_INS.Gyro, 0, sizeof(QEKF_INS.Gyro));
+	memset(QEKF_INS.Accel, 0, sizeof(QEKF_INS.Accel)); // Will be set by LPF on first data too
+	QEKF_INS.gyro_norm = 0.0f;
+	QEKF_INS.accl_norm = 0.0f;
+	QEKF_INS.StableFlag = 0; // FALSE
+	memset(QEKF_INS.OrientationCosine, 0, sizeof(QEKF_INS.OrientationCosine));
+	QEKF_INS.AdaptiveGainScale = 1.0f;
+
+	// Initialize quaternion q and derived Euler angles
+	memcpy(QEKF_INS.q, init_quaternion, sizeof(QEKF_INS.q));
+	float norm_init_q = invSqrt(QEKF_INS.q[0] * QEKF_INS.q[0] + QEKF_INS.q[1] * QEKF_INS.q[1] +
+				    QEKF_INS.q[2] * QEKF_INS.q[2] + QEKF_INS.q[3] * QEKF_INS.q[3]);
+	for (int i = 0; i < 4; ++i) {
+		QEKF_INS.q[i] *= norm_init_q;
+	}
+
+	QEKF_INS.Yaw =
+		atan2f(2.0f * (QEKF_INS.q[0] * QEKF_INS.q[3] + QEKF_INS.q[1] * QEKF_INS.q[2]),
+		       2.0f * (QEKF_INS.q[0] * QEKF_INS.q[0] + QEKF_INS.q[1] * QEKF_INS.q[1]) -
+			       1.0f) *
+		57.295779513f;
+	QEKF_INS.Pitch =
+		atan2f(2.0f * (QEKF_INS.q[0] * QEKF_INS.q[1] + QEKF_INS.q[2] * QEKF_INS.q[3]),
+		       2.0f * (QEKF_INS.q[0] * QEKF_INS.q[0] + QEKF_INS.q[3] * QEKF_INS.q[3]) -
+			       1.0f) *
+		57.295779513f;
+	QEKF_INS.Roll =
+		asinf(-2.0f * (QEKF_INS.q[1] * QEKF_INS.q[3] - QEKF_INS.q[0] * QEKF_INS.q[2])) *
+		57.295779513f;
+
+	QEKF_INS.YawAngleLast = QEKF_INS.Yaw;
+	QEKF_INS.YawRoundCount = 0;
+	QEKF_INS.YawTotalAngle = QEKF_INS.Yaw;
+
 	// 初始化矩阵维度信息
 	Kalman_Filter_Init(&QEKF_INS.IMU_QuaternionEKF, 4, 0, 3);
 	Matrix_Init(&QEKF_INS.ChiSquare, 1, 1, (float *)QEKF_INS.ChiSquare_Data);
@@ -85,8 +124,9 @@ void IMU_QuaternionEKF_Init(float *init_quaternion, float process_noise1, float 
 	// QEKF_INS.GyroBias[0] = ...; (This depends on how bias is handled at startup)
 	// Assuming hasStoredBias will be set if DTS provides bias, otherwise GyroBias starts at 0
 	// or probed.
-	memset(QEKF_INS.GyroBias, 0, sizeof(QEKF_INS.GyroBias));
-
+	if (!QEKF_INS.hasStoredBias) {
+		memset(QEKF_INS.GyroBias, 0, sizeof(QEKF_INS.GyroBias));
+	}
 	// 自定义函数初始化,用于扩展或增加kf的基础功能
 	QEKF_INS.IMU_QuaternionEKF.User_Func0_f = IMU_QuaternionEKF_Observe;
 	// We don't probe bias now. (Comment seems outdated, bias is handled)
@@ -259,6 +299,9 @@ void IMU_QuaternionEKF_Predict_Update(float gx, float gy, float gz, float gyro_d
 void IMU_QuaternionEKF_Measurement_Update(float gx_raw, float gy_raw, float gz_raw, float gyro_dt,
 					  float ax, float ay, float az, float accel_dt)
 {
+	if (gyro_dt <= 0 || accel_dt <= 0) {
+		return;
+	}
 	// 0.5(Ohm-Ohm^bias)*deltaT,用于更新工作点处的状态转移F矩阵
 	static float halfgxdt, halfgydt, halfgzdt;
 	static float accelInvNorm;

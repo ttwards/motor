@@ -1,14 +1,13 @@
 #include <zephyr/drivers/sensor.h>
-#include "ares/ekf/QuaternionEKF.h"
+#include "QuaternionEKF.h"
 #include "imu_task.h"
-#include "zephyr/devicetree.h"
-#include "zephyr/drivers/pid.h"
-#include "zephyr/kernel.h"
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/pid.h>
+#include <zephyr/kernel.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/fs/nvs.h>
-#include "zephyr/sys/printk.h"
-#include "zephyr/sys/time_units.h"
+#include <zephyr/sys/time_units.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -108,7 +107,7 @@ static void IMU_Sensor_temp_control(INS_t *data)
 		IMU_temp_pwm_set(data->accel_dev);
 
 		if (current_temp >= 65) {
-			LOG_WRN("Current Temp: %.2f, PWM: %d\n", (double)current_temp,
+			LOG_WRN("Current Temp: %.2f, PWM: %d", (double)current_temp,
 				(int)temp_pwm_output);
 		}
 	}
@@ -197,12 +196,12 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		QEKF_INS.GyroBias[X] = matrix1[2][0];
 		QEKF_INS.GyroBias[Y] = matrix1[2][1];
 		QEKF_INS.GyroBias[Z] = matrix1[2][2];
-		printk("AccelBias: %f, %f, %f\n", (double)QEKF_INS.AccelBias[X],
-		       (double)QEKF_INS.AccelBias[Y], (double)QEKF_INS.AccelBias[Z]);
-		printk("AccelBeta: %f, %f, %f\n", (double)QEKF_INS.AccelBeta[X],
-		       (double)QEKF_INS.AccelBeta[Y], (double)QEKF_INS.AccelBeta[Z]);
-		printk("GyroBias: %f, %f, %f\n", (double)QEKF_INS.GyroBias[X],
-		       (double)QEKF_INS.GyroBias[Y], (double)QEKF_INS.GyroBias[Z]);
+		LOG_INF("AccelBias: %f, %f, %f", (double)QEKF_INS.AccelBias[X],
+			(double)QEKF_INS.AccelBias[Y], (double)QEKF_INS.AccelBias[Z]);
+		LOG_INF("AccelBeta: %f, %f, %f", (double)QEKF_INS.AccelBeta[X],
+			(double)QEKF_INS.AccelBeta[Y], (double)QEKF_INS.AccelBeta[Z]);
+		LOG_INF("GyroBias: %f, %f, %f", (double)QEKF_INS.GyroBias[X],
+			(double)QEKF_INS.GyroBias[Y], (double)QEKF_INS.GyroBias[Z]);
 		QEKF_INS.hasStoredBias = true;
 	} else {
 		LOG_ERR("No stored bias, using default values");
@@ -248,8 +247,9 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 		init_q4[i + 1] =
 			axis_rot[i] * sinf(angle / 2.0f); // 轴角公式,第三轴为0(没有z轴分量)
 	}
-	// printk("Init Quaternion: %f, %f, %f, %f\n", init_q4[0], init_q4[1], init_q4[2],
-	// init_q4[3]); printk("Accel: %f, %f, %f\n", acc_init[X], acc_init[Y], acc_init[Z]);
+	LOG_INF("Init Quaternion: %f, %f, %f, %f", (double)init_q4[0], (double)init_q4[1],
+		(double)init_q4[2], (double)init_q4[3]);
+	LOG_INF("Accel: %f, %f, %f", (double)acc_init[X], (double)acc_init[Y], (double)acc_init[Z]);
 }
 
 static void IMU_Sensor_trig_handler(const struct device *dev, const struct sensor_trigger *trigger)
@@ -316,7 +316,7 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 	pid_reg_time(temp_pwm_pid, &INS.accel_curr_cyc, &INS.accel_prev_cyc);
 
 	if (!pwm_is_ready_dt(&pwm)) {
-		printk("Error: PWM device %s is not ready\n", pwm.dev->name);
+		LOG_INF("Error: PWM device %s is not ready", pwm.dev->name);
 		return;
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
