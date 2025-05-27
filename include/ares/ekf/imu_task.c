@@ -23,7 +23,7 @@ LOG_MODULE_REGISTER(imu_task, LOG_LEVEL_INF);
 static int accel_count = 0;
 static int gyro_count = 0;
 
-#define MEASURE_UPDATE_GAP 8
+#define MEASURE_UPDATE_GAP 1
 #define PREDICT_UPDATE_GAP 1
 
 static IMU_Param_t IMU_Param;
@@ -295,8 +295,6 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 	}
 }
 
-float init_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f}; // [w, x, y, z]
-
 static struct sensor_trigger accel_trig = {
 	.type = SENSOR_TRIG_DATA_READY,
 	.chan = SENSOR_CHAN_ACCEL_XYZ,
@@ -340,7 +338,16 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 	InitQuaternion(accel_dev, gyro_dev, init_quaternion, INS.lpf_Accel);
 
 	// 调用初始化
-	IMU_QuaternionEKF_Init(init_quaternion, 10, 0.001, 100000, 0.9999996, 0);
+	IMU_QuaternionEKF_Init(init_quaternion, 20, 0.001, 10000, 0.9996, 0);
+
+	// Re-initialize all timestamps right before enabling triggers
+	// This ensures the first dt=0, and the second dt is small (actual first inter-sample
+	// processing time)
+	uint32_t trigger_enable_time = k_cycle_get_32();
+	INS.gyro_prev_cyc = trigger_enable_time;
+	INS.gyro_curr_cyc = trigger_enable_time;
+	INS.accel_prev_cyc = trigger_enable_time;
+	INS.accel_curr_cyc = trigger_enable_time;
 
 	sensor_trigger_set(accel_dev, &accel_trig, IMU_Sensor_trig_handler);
 	sensor_trigger_set(gyro_dev, &gyro_trig, IMU_Sensor_trig_handler);
