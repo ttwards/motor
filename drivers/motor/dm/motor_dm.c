@@ -147,7 +147,7 @@ int dm_queue_proceed(struct k_msgq *msgq)
 	return err;
 }
 
-void dm_motor_control(const struct device *dev, enum motor_cmd cmd)
+void dm_control(const struct device *dev, enum motor_cmd cmd)
 {
 	struct dm_motor_data *data = dev->data;
 	const struct dm_motor_config *cfg = dev->config;
@@ -162,6 +162,7 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd)
 
 	switch (cmd) {
 	case ENABLE_MOTOR:
+		data->enable = true;
 		data->online = true;
 		memcpy(frame.data, enable_frame, 8);
 		if (k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT) == 0) {
@@ -170,6 +171,7 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd)
 		}
 		break;
 	case DISABLE_MOTOR:
+		data->enable = false;
 		data->online = false;
 		memcpy(frame.data, disable_frame, 8);
 		if (k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT) == 0) {
@@ -177,7 +179,7 @@ void dm_motor_control(const struct device *dev, enum motor_cmd cmd)
 				       &tx_queue_sem[can_id]);
 		}
 		break;
-	case SET_ZERO_OFFSET:
+	case SET_ZERO:
 		memcpy(frame.data, set_zero_frame, 8);
 		if (k_sem_take(&tx_queue_sem[can_id], K_NO_WAIT) == 0) {
 			err = can_send(cfg->common.phy, &frame, K_NO_WAIT, can_tx_callback,
@@ -245,22 +247,22 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 	}
 }
 
-float dm_motor_get_angle(const struct device *dev)
+int dm_get(const struct device *dev, motor_status_t *status)
 {
 	struct dm_motor_data *data = dev->data;
-	return data->common.angle;
-}
+	const struct dm_motor_config *cfg = dev->config;
 
-float dm_motor_get_speed(const struct device *dev)
-{
-	struct dm_motor_data *data = dev->data;
-	return data->common.rpm;
-}
+	status->angle = fmodf(data->common.angle, 360.0f);
+	status->rpm = data->common.rpm;
+	status->torque = data->common.torque;
 
-float dm_motor_get_torque(const struct device *dev)
-{
-	struct dm_motor_data *data = dev->data;
-	return data->common.torque;
+	status->mode = data->common.mode;
+	status->round_cnt = (int)(data->common.angle / 360.0f);
+	status->speed_limit[0] = cfg->v_max;
+	status->speed_limit[1] = cfg->v_max;
+	status->torque_limit[0] = cfg->t_max;
+	status->torque_limit[1] = cfg->t_max;
+	return 0;
 }
 
 int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
@@ -284,14 +286,12 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 		strcpy(mode_str, "vo");
 		data->tx_offset = 0x200;
 		break;
-	case MULTILOOP:
+	default:
 		data->online = false;
 		return -ENOSYS;
-		break;
-	default:
-		break;
 	}
 
+	bool found = false;
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
 		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
 			break;
@@ -302,43 +302,43 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 			data->common.mode = mode;
 			data->params.k_p = params->k_p;
 			data->params.k_d = params->k_d;
+			found = true;
 			break;
 		}
+	}
+	if (!found) {
+		LOG_ERR("Mode %s not found", mode_str);
+		dm_control(dev, DISABLE_MOTOR);
+		data->enable = false;
+		return -ENOSYS;
 	}
 	return 0;
 }
 
-int dm_motor_set_torque(const struct device *dev, float torque)
-{
-	struct dm_motor_data *data = dev->data;
-	const struct dm_motor_config *cfg = dev->config;
-
-	data->target_radps = 0;
-	data->target_angle = 0;
-	float torque_scaled = torque / cfg->gear_ratio;
-	data->target_torque = torque_scaled;
-	data->params.k_p = 0;
-	data->params.k_d = 0;
-	return 0;
-}
-
-int dm_motor_set_speed(const struct device *dev, float speed_rpm)
+int dm_set(const struct device *dev, motor_status_t *status)
 {
 	struct dm_motor_data *data = dev->data;
 
-	data->target_radps = RPM2RADPS(speed_rpm);
+	if (status->mode == MIT) {
+		data->target_angle = RAD2DEG * status->angle;
+		data->target_radps = RPM2RADPS(status->rpm);
+		data->target_torque = status->torque;
+		data->params.k_p = 0;
+		data->params.k_d = 0;
+	} else if (status->mode == PV) {
+		data->target_angle = status->angle;
+		data->target_radps = RPM2RADPS(status->rpm);
+	} else if (status->mode == VO) {
+		data->target_radps = status->rpm;
+		data->target_angle = 0;
+		data->target_torque = 0;
+		data->params.k_p = 0;
+		data->params.k_d = 0;
+	} else {
+		return -ENOSYS;
+	}
 
-	return 0;
-}
-
-// user must set speed before setting angle
-int dm_motor_set_angle(const struct device *dev, float angle)
-{
-	struct dm_motor_data *data = dev->data;
-
-	data->target_angle = RAD2DEG * angle;
-
-	return 0;
+	return dm_motor_set_mode(dev, status->mode);
 }
 
 static int get_motor_id(struct can_frame *frame)
@@ -369,7 +369,7 @@ static void dm_can_rx_handler(const struct device *can_dev, struct can_frame *fr
 	if (data->missed_times > 0) {
 		if (data->missed_times > 5 && data->online == true) {
 			data->missed_times = 0;
-			LOG_ERR("Motor %d is back online", id);
+			LOG_ERR("Motor %s is back online", motor_devices[id]->name);
 		}
 		data->missed_times--;
 	}
@@ -394,7 +394,7 @@ void dm_rx_data_handler(struct k_work *work)
 
 		float prev_angle = data->common.angle;
 		data->common.angle =
-			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16))*RAD2DEG;
+			(uint_to_float(data->RAWangle, -cfg->p_max, cfg->p_max, 16)) * RAD2DEG;
 		data->common.rpm =
 			RADPS2RPM(uint_to_float(data->RAWrpm, -cfg->v_max, cfg->v_max, 12));
 		data->common.torque = uint_to_float(data->RAWtorque, -cfg->t_max, cfg->t_max, 12);
@@ -432,7 +432,18 @@ void dm_tx_data_handler(struct k_work *work)
 	for (int i = 0; i < MOTOR_COUNT; i++) {
 		struct dm_motor_data *data = motor_devices[i]->data;
 		const struct dm_motor_config *cfg = motor_devices[i]->config;
-		if (data->online && data->missed_times <= 5) {
+		if (data->online) {
+			data->missed_times++;
+			if (data->missed_times > 5) {
+				LOG_ERR("Motor %s is not responding, setting it to offline...",
+					motor_devices[i]->name);
+				data->online = false;
+				continue;
+			}
+			if (data->missed_times > 3 && data->err > 1) {
+				dm_control(motor_devices[i], CLEAR_ERROR);
+			}
+
 			int can_id = get_can_id(motor_devices[i]);
 			dm_motor_pack(motor_devices[i], &tx_frame);
 			struct tx_frame queued_frame = {
@@ -441,18 +452,9 @@ void dm_tx_data_handler(struct k_work *work)
 				.frame = tx_frame,
 			};
 			dm_send_queued(&queued_frame, &dm_can_tx_msgq);
-
-			data->missed_times++;
-			if (data->missed_times > 5) {
-				LOG_ERR("Motor %d is not responding, missed %d times, setting it "
-					"to "
-					"offline...",
-					i, data->missed_times);
-				continue;
-			}
-			if (data->missed_times > 3 && data->err > 1) {
-				dm_motor_control(motor_devices[i], CLEAR_ERROR);
-			}
+		} else if (!data->online && data->enable) {
+			dm_control(motor_devices[i], ENABLE_MOTOR);
+			data->online = true;
 		}
 	}
 	dm_queue_proceed(&dm_can_tx_msgq);
@@ -507,7 +509,7 @@ void dm_init_handler(struct k_work *work)
 	k_sleep(K_MSEC(500));
 
 	for (int i = 0; i < MOTOR_COUNT; i++) {
-		dm_motor_control(motor_devices[i], ENABLE_MOTOR);
+		dm_control(motor_devices[i], ENABLE_MOTOR);
 	}
 
 	k_timer_start(&dm_tx_timer, K_NO_WAIT, K_MSEC(1));
