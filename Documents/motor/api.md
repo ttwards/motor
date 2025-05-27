@@ -25,6 +25,20 @@ enum motor_mode { MIT, PV, VO, ML_TORQUE, ML_ANGLE, ML_SPEED };
  */
 enum motor_cmd { ENABLE_MOTOR, DISABLE_MOTOR, SET_ZERO, CLEAR_PID, CLEAR_ERROR };
 ```
+```c
+motor_status_t {
+	float angle;
+	float rpm;
+	float torque;
+	float temperature; /* Cannot be set in target */
+	int round_cnt;
+
+	float speed_limit[2];
+	float torque_limit[2];
+
+	enum motor_mode mode;
+};
+```
 ## 电机状态获取
 `motor_get(const struct device *dev, motor_status_t *status)`: 获取电机当前状态，参数为电机状态结构体。
 `motor_set(const struct device *dev, motor_status_t *status)`: 设置电机目标状态，参数为电机状态结构体。
