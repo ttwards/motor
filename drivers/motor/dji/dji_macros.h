@@ -34,8 +34,7 @@
 	DEVICE_DT_GET(DT_PHANDLE(DT_CHILD_BY_IDX(node_id, idx)))
 #define CANPHY_BY_IDX(idx) GET_CANPHY_POINTER_BY_IDX(CAN_BUS_PATH, idx)
 
-#define MOTOR_COUNT sizeof(motor_devices) / sizeof(motor_devices[0])
-#define CAN_COUNT   DT_NUM_INST_STATUS_OKAY(vnd_canbus)
+#define DJI_MOTOR_COUNT sizeof(motor_devices) / sizeof(motor_devices[0])
 
 #define GET_CAN_CHANNEL_IDT(node_id) DT_PHANDLE(node_id, can_channel)
 #define GET_CAN_DEV(node_id)         DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
@@ -59,8 +58,8 @@
 #define DMOTOR_DATA_INST(inst)                                                                     \
 	static struct dji_motor_data dji_motor_data_##inst = {                                     \
 		.common = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                     \
-		.canbus_id = DT_DRIVER_GET_CANBUS_ID(inst),                                        \
-		.ctrl_struct = &ctrl_structs[DT_DRIVER_GET_CANBUS_ID(inst)],                       \
+		.canbus_id = 0,                                                                    \
+		.ctrl_struct = NULL,                                                               \
 		.online = false,                                                                   \
 		.convert_num = 0,                                                                  \
 		.current_mode_index = -1,                                                          \

@@ -40,6 +40,54 @@ extern "C" {
 #define RPM2RADPS(rpm)   ((rpm) * 0.104719755f)
 #define RADPS2RPM(radps) ((radps) * 9.54929659f)
 
+#define motor_set_angle(dev, _angle)                                                               \
+	motor_set(dev, &(motor_status_t){.angle = _angle, .mode = ML_ANGLE})
+#define motor_set_rpm(dev, _rpm) motor_set(dev, &(motor_status_t){.rpm = _rpm, .mode = ML_SPEED})
+#define motor_set_torque(dev, _torque)                                                             \
+	motor_set(dev, &(motor_status_t){.torque = _torque, .mode = ML_TORQUE})
+#define motor_set_speed(dev, _speed)                                                               \
+	motor_set(dev, &(motor_status_t){.rpm = _speed, .mode = ML_SPEED})
+#define motor_set_mode(dev, _mode) motor_set(dev, &(motor_status_t){.mode = _mode})
+#define motor_set_mit(dev, _speed, _angle, _torque)                                                \
+	motor_set(dev,                                                                             \
+		  &(motor_status_t){                                                               \
+			  .speed = _speed, .angle = _angle, .torque = _torque, .mode = ML_MIT})
+#define motor_set_speed_limit(dev, _min, _max)                                                     \
+	motor_set(dev, &(motor_status_t){.speed_limit = {_min, _max}})
+#define motor_set_torque_limit(dev, _min, _max)                                                    \
+	motor_set(dev, &(motor_status_t){.torque_limit = {_min, _max}})
+
+#define motor_get_angle(dev)                                                                       \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.angle;                                                               \
+	}
+#define motor_get_rpm(dev)                                                                         \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.rpm;                                                                 \
+	}
+#define motor_get_torque(dev)                                                                      \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.torque;                                                              \
+	}
+#define motor_get_speed(dev)                                                                       \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.speed;                                                               \
+	}
+#define motor_get_mode(dev)                                                                        \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.mode;                                                                \
+	}
+
 /**
  * @brief 电机工作模式枚举
  *
@@ -190,14 +238,7 @@ static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd
 	api->motor_control(dev, cmd);
 }
 
-#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)
-
-#define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
-#define DT_DRIVER_GET_CANPHY_IDT(node_id) DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
-
-#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_DRIVER_GET_CANPHY_IDT(node_id))
-
-#define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
+#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_channel))
 
 #define NEW_PID_INSTANCE_STRUCT(node_id, prop, idx)                                                \
 	PID_NEW_INSTANCE(DT_PROP_BY_IDX(node_id, prop, idx), DT_NODE_FULL_NAME_UNQUOTED(node_id))

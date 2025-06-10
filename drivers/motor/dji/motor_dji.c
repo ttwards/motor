@@ -23,6 +23,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/time_units.h>
+#include "../common/common.h"
 
 #define DT_DRV_COMPAT dji_motor
 
@@ -30,12 +31,9 @@ LOG_MODULE_REGISTER(motor_dji, CONFIG_MOTOR_LOG_LEVEL);
 
 const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DJI_DEVICE_POINTER)};
 
-const struct device *can_devices[] = {
-	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
-
-#define CTRL_STRUCT_DATA(node_id)                                                                  \
+#define CTRL_STRUCT_DATA(i, _)                                                                     \
 	{                                                                                          \
-		.can_dev = DT_GET_CANPHY_BY_BUS(node_id),                                          \
+		.can_dev = NULL,                                                                   \
 		.flags = 0,                                                                        \
 		.full = {false},                                                                   \
 		.mask = {0},                                                                       \
@@ -99,18 +97,8 @@ static int16_t to16t(float value)
 	}
 }
 
-struct motor_controller ctrl_structs[CAN_COUNT] = {
-	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
-
-static inline motor_id_t canbus_id(const struct device *dev)
-{
-	for (int i = 0; i < CAN_COUNT; i++) {
-		if (can_devices[i] == dev) {
-			return i;
-		}
-	}
-	return -1;
-}
+struct motor_controller ctrl_structs[CONFIG_CAN_COUNT] = {
+	LISTIFY(CONFIG_CAN_COUNT, CTRL_STRUCT_DATA, (, ))};
 
 static inline motor_id_t motor_id(const struct device *dev)
 {
@@ -302,6 +290,9 @@ int dji_init(const struct device *dev)
 	if (dev) {
 		const struct dji_motor_config *cfg = dev->config;
 		struct dji_motor_data *data = dev->data;
+		data->canbus_id = reg_can_dev(cfg->common.phy);
+		data->ctrl_struct = &ctrl_structs[data->canbus_id];
+		data->ctrl_struct->can_dev = (struct device *)cfg->common.phy;
 		uint8_t frame_id = frameID_to_index(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
 		data->ctrl_struct->mask[frame_id] |= 1 << id;
@@ -383,7 +374,7 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 
 	struct dji_motor_data *data = dev->data;
 	uint16_t id = motor_id(dev);
-	uint8_t bus_id = canbus_id(can_dev);
+
 	k_spinlock_key_t key;
 	if (k_spin_trylock(&data->data_input_lock, &key) != 0) {
 		return;
@@ -399,8 +390,8 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 			(const struct dji_motor_config *)dev->config;
 		int8_t frame_id = frameID_to_index(motor_cfg->common.tx_id);
 		data->ctrl_struct->mask[frame_id] |= 1 << id;
-		LOG_ERR("Motor \"%s\" on canbus %d is responding again, resuming...", dev->name,
-			bus_id);
+		LOG_ERR("Motor \"%s\" on canbus \"%s\" is responding again, resuming...", dev->name,
+			motor_cfg->common.phy->name);
 	} else if (data->missed_times > 0) {
 		data->missed_times--;
 	}
@@ -430,16 +421,6 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	// k_thread_resume(dji_motor_ctrl_thread);
 	k_spin_unlock(&data->data_input_lock, key);
 	return;
-}
-
-static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
-{
-	struct k_sem *queue_sem = user_data;
-	if (!error || error == -EIO) {
-		k_sem_give(queue_sem);
-	} else {
-		LOG_ERR("CAN TX error: %d on canbus %d", error, canbus_id(can_dev));
-	}
 }
 
 static void proceed_delta_degree(const struct device *dev)
@@ -588,18 +569,8 @@ void dji_miss_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	int curr_time = k_cycle_get_32();
-	for (int i = 0; i < CAN_COUNT; i++) {
-		if (k_sem_count_get(&ctrl_structs[i].tx_queue_sem) < 1) {
-			// can_stop(ctrl_structs[i].can_dev);
-			// can_start(ctrl_structs[i].can_dev);
-			// k_sem_reset(&ctrl_structs[i].tx_queue_sem);
-		}
-		for (int j = 0; j < 8; j++) {
-			if (ctrl_structs[i].motor_devs[j]) {
-				dji_timeout_handle(ctrl_structs[i].motor_devs[j], curr_time,
-						   &ctrl_structs[i]);
-			}
-		}
+	for (int i = 0; i < DJI_MOTOR_COUNT; i++) {
+		dji_timeout_handle(motor_devices[i], curr_time, &ctrl_structs[i]);
 	}
 }
 
@@ -607,18 +578,14 @@ void dji_init_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	k_timer_stop(&dji_miss_handle_timer);
-	struct device *can_dev = NULL;
-	for (int i = 0; i < CAN_COUNT; i++) {
-		k_sem_init(&ctrl_structs[i].tx_queue_sem, 3, 3); // 初始化信号量
-
-		can_dev = (struct device *)ctrl_structs[i].can_dev;
-		can_start(can_dev);
-	}
-	for (int i = 0; i < MOTOR_COUNT; i++) {
+	for (int i = 0; i < DJI_MOTOR_COUNT; i++) {
 		if (motor_devices[i]) {
 			const struct dji_motor_config *cfg = motor_devices[i]->config;
 			struct can_filter filter = {
-				.id = cfg->common.rx_id, .mask = 0x3FF, .flags = 0};
+				.id = cfg->common.rx_id,
+				.mask = 0x7FF,
+				.flags = 0,
+			};
 			int err = can_add_rx_filter(cfg->common.phy, can_rx_callback,
 						    (void *)motor_devices[i], &filter);
 			if (err < 0) {
@@ -666,11 +633,7 @@ void dji_tx_handler(struct k_work *work)
 				txframe.flags = 0;
 				memcpy(txframe.data, frame_data, sizeof(frame_data));
 				const struct device *can_dev = ctrl_struct->can_dev;
-				int err = k_sem_take(&ctrl_struct->tx_queue_sem, K_NO_WAIT);
-				if (err == 0) {
-					err = can_send(can_dev, &txframe, K_NO_WAIT,
-						       can_tx_callback, &ctrl_struct->tx_queue_sem);
-				}
+				int err = can_send_queued(can_dev, &txframe);
 				if (err != 0 && err != -EAGAIN && err != -EBUSY) {
 					LOG_ERR("Error sending CAN frame (err %d)", err);
 				}

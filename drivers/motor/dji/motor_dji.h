@@ -34,7 +34,7 @@ typedef uint16_t motor_id_t;
 struct k_work_q dji_work_queue;
 
 struct motor_controller {
-	const struct device *can_dev;
+	struct device *can_dev;
 
 	/*
 	  There are 4 tx addresses
@@ -51,8 +51,6 @@ struct motor_controller {
 	struct device *motor_devs[8];
 
 	struct k_work full_handle;
-
-	struct k_sem tx_queue_sem;
 };
 
 struct dji_motor_data {

@@ -41,14 +41,16 @@ struct dm_motor_data {
 	struct motor_driver_data common;
 
 	int tx_offset;
+	struct can_filter filter;
 
 	// Control status
 	bool online;
 	bool enable;
+	bool enabled;
 
 	bool update;
 
-	int8_t missed_times;
+	uint64_t prev_recv_time;
 	int8_t err;
 
 	// Process round
@@ -76,17 +78,9 @@ struct dm_motor_config {
 	float t_max;
 };
 
-struct tx_frame {
-	const struct device *can_dev;
-	struct k_sem *sem;
-	struct can_frame frame;
-};
-
 struct k_work_q dm_work_queue;
 
 // 函数声明
-void dm_rx_handler(const struct device *can_dev, struct can_frame *frame, void *user_data);
-
 int dm_set(const struct device *dev, motor_status_t *status);
 void dm_control(const struct device *dev, enum motor_cmd cmd);
 int dm_get(const struct device *dev, motor_status_t *status);
@@ -105,22 +99,13 @@ static const struct motor_driver_api motor_api_funcs = {
 	.motor_control = dm_control,
 };
 
-static struct k_sem tx_queue_sem[CAN_COUNT];
-
 #define MOTOR_COUNT            DT_NUM_INST_STATUS_OKAY(dm_motor)
 #define DM_MOTOR_POINTER(inst) DEVICE_DT_GET(DT_DRV_INST(inst)),
 static const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DM_MOTOR_POINTER)};
 
-#define CAN_BUS_PATH DT_PATH(canbus)
-
-#define CAN_DEVICE_POINTER(node_id) DEVICE_DT_GET(DT_PROP(node_id, can_device))
-static const struct device *can_devices[] = {
-	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
-
 K_THREAD_STACK_DEFINE(dm_work_queue_stack, CAN_SEND_STACK_SIZE);
 
 CAN_MSGQ_DEFINE(dm_can_rx_msgq, 12);
-K_MSGQ_DEFINE(dm_can_tx_msgq, sizeof(struct tx_frame), MOTOR_COUNT, 4);
 K_MSGQ_DEFINE(dm_thread_proc_msgq, sizeof(bool), MOTOR_COUNT * 2, 4);
 
 K_WORK_DEFINE(dm_rx_data_handle, dm_rx_data_handler);
@@ -134,8 +119,10 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 	static struct dm_motor_data dm_motor_data_##inst = {                                       \
 		.common = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                     \
 		.tx_offset = 0,                                                                    \
-		.online = false,                                                                   \
-		.missed_times = 0,                                                                 \
+		.online = true,                                                                    \
+		.enable = true,                                                                    \
+		.enabled = true,                                                                   \
+		.prev_recv_time = 0,                                                               \
 		.err = 0,                                                                          \
 		.delta_deg_sum = 0,                                                                \
 		.target_angle = 0,                                                                 \
