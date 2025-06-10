@@ -6,11 +6,7 @@
 
 # add_definitions(-D__ZEPHYR_SUPERVISOR__)
 
-add_subdirectory_ifdef(CONFIG_MOTOR_DJI motor/dji)
-
-add_subdirectory_ifdef(CONFIG_MOTOR_MI motor/mi)
-
-add_subdirectory_ifdef(CONFIG_MOTOR_DM motor/dm)
+add_subdirectory_ifdef(CONFIG_MOTOR_COMMON motor)
 
 add_subdirectory_ifdef(CONFIG_PID pid)
 
