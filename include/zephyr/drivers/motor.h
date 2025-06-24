@@ -21,8 +21,8 @@
  * @{
  */
 
-#include "zephyr/drivers/pid.h"
-#include "zephyr/toolchain.h"
+#include <zephyr/drivers/pid.h>
+#include <zephyr/toolchain.h>
 #include <sys/_intsup.h>
 #include <zephyr/kernel.h>
 #include <zephyr/kernel/thread.h>
@@ -40,6 +40,54 @@ extern "C" {
 #define RPM2RADPS(rpm)   ((rpm) * 0.104719755f)
 #define RADPS2RPM(radps) ((radps) * 9.54929659f)
 
+#define motor_set_angle(dev, _angle)                                                               \
+	motor_set(dev, &(motor_status_t){.angle = _angle, .mode = ML_ANGLE})
+#define motor_set_rpm(dev, _rpm) motor_set(dev, &(motor_status_t){.rpm = _rpm, .mode = ML_SPEED})
+#define motor_set_torque(dev, _torque)                                                             \
+	motor_set(dev, &(motor_status_t){.torque = _torque, .mode = ML_TORQUE})
+#define motor_set_speed(dev, _speed)                                                               \
+	motor_set(dev, &(motor_status_t){.rpm = _speed, .mode = ML_SPEED})
+#define motor_set_mode(dev, _mode) motor_set(dev, &(motor_status_t){.mode = _mode})
+#define motor_set_mit(dev, _speed, _angle, _torque)                                                \
+	motor_set(dev,                                                                             \
+		  &(motor_status_t){                                                               \
+			  .speed = _speed, .angle = _angle, .torque = _torque, .mode = ML_MIT})
+#define motor_set_speed_limit(dev, _min, _max)                                                     \
+	motor_set(dev, &(motor_status_t){.speed_limit = {_min, _max}})
+#define motor_set_torque_limit(dev, _min, _max)                                                    \
+	motor_set(dev, &(motor_status_t){.torque_limit = {_min, _max}})
+
+#define motor_get_angle(dev)                                                                       \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.angle;                                                               \
+	}
+#define motor_get_rpm(dev)                                                                         \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.rpm;                                                                 \
+	}
+#define motor_get_torque(dev)                                                                      \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.torque;                                                              \
+	}
+#define motor_get_speed(dev)                                                                       \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.speed;                                                               \
+	}
+#define motor_get_mode(dev)                                                                        \
+	{                                                                                          \
+		motor_status_t status;                                                             \
+		motor_get(dev, &status);                                                           \
+		return status.mode;                                                                \
+	}
+
 /**
  * @brief 电机工作模式枚举
  *
@@ -49,10 +97,12 @@ extern "C" {
  * MULTILOOP: 多环串联控制
  */
 enum motor_mode {
-	MIT,
-	PV,
-	VO,
-	MULTILOOP
+	MIT = 0,
+	PV = 1,
+	VO = 2,
+	ML_TORQUE = 3,
+	ML_ANGLE = 4,
+	ML_SPEED = 5,
 };
 
 /**
@@ -61,7 +111,7 @@ enum motor_mode {
 enum motor_cmd {
 	ENABLE_MOTOR,
 	DISABLE_MOTOR,
-	SET_ZERO_OFFSET,
+	SET_ZERO,
 	CLEAR_PID,
 	CLEAR_ERROR
 };
@@ -83,233 +133,91 @@ struct motor_driver_config {
 typedef float (*motor_slip_cb_t)(const struct device *dev);
 
 struct motor_driver_data {
-	void *spec_data;
-
 	float angle;
 	float rpm;
-	float alpha;
 	float torque;
-	float temperature;
+	float temperature; /* Cannot be set in target */
 	int round_cnt;
 
 	float speed_limit[2];
 	float torque_limit[2];
 
-	uint16_t sample_cnt;
-
 	enum motor_mode mode;
 };
 
-/**
- * @typedef motor_api_stat_speed_t
- * @brief 获取电机当前速度的回调函数
- *
- * @param dev 指向电机设备的指针
- * @return float 当前电机速度(rpm)
- */
-typedef float (*motor_api_stat_speed_t)(const struct device *dev);
+typedef struct motor_driver_data motor_status_t;
 
 /**
- * @typedef motor_api_stat_torque_t
- * @brief 获取电机当前扭矩的回调函数
+ * @typedef motor_api_stat_t
+ * @brief 获取电机当前状态
  *
  * @param dev 指向电机设备的指针
- * @return float 当前电机扭矩(N·m)
+ * @return int 成功: 0, 失败: 负值
  */
-typedef float (*motor_api_stat_torque_t)(const struct device *dev);
+typedef int (*motor_api_stat_t)(const struct device *dev, motor_status_t *status);
 
 /**
- * @typedef motor_api_stat_angle_t
- * @brief 获取电机当前角度的回调函数
+ * @typedef motor_api_set_t
+ * @brief 设置电机目标状态的回调函数
  *
  * @param dev 指向电机设备的指针
- * @return float 当前电机角度(度)
+ * @param status 目标状态
+ * @return int 成功: 0, 失败: 负值
  */
-typedef float (*motor_api_stat_angle_t)(const struct device *dev);
-
-/**
- * @typedef motor_api_speed_t
- * @brief 设置电机目标速度的回调函数
- *
- * @param dev 指向电机设备的指针
- * @param speed_rpm 目标速度(rpm)
- * @return int 0表示成功,负值表示错误码
- */
-typedef int (*motor_api_speed_t)(const struct device *dev, float speed_rpm);
-
-/**
- * @typedef motor_api_torque_t
- * @brief 设置电机目标扭矩的回调函数
- *
- * @param dev 指向电机设备的指针
- * @param torque 目标扭矩(N·m)
- * @return int 0表示成功,负值表示错误码
- */
-typedef int (*motor_api_torque_t)(const struct device *dev, float torque);
-
-/**
- * @typedef motor_api_angle_t
- * @brief 设置电机目标角度的回调函数
- *
- * @param dev 指向电机设备的指针
- * @param angle 目标角度(度)
- * @return int 0表示成功,负值表示错误码
- */
-typedef int (*motor_api_angle_t)(const struct device *dev, float angle);
+typedef int (*motor_api_set_t)(const struct device *dev, motor_status_t *status);
 
 /**
  * @typedef motor_api_ctrl_t
- * @brief 电机控制命令的回调函数
+ * @brief 电机控制命令
  *
  * @param dev 指向电机设备的指针
- * @param cmd 控制命令(启动、停止等)
+ * @param cmd 控制命令
  * @return void
  */
 typedef void (*motor_api_ctrl_t)(const struct device *dev, enum motor_cmd cmd);
 
 /**
- * @typedef motor_api_mode_t
- * @brief 设置电机工作模式的回调函数
- *
- * @param dev 指向电机设备的指针
- * @param mode 工作模式(速度模式、位置模式等)
- * @return int 0表示成功,负值表示错误码
- */
-typedef int (*motor_api_mode_t)(const struct device *dev, enum motor_mode mode);
-
-typedef void (*motor_limit_speed_t)(const struct device *dev, float max_speed, float min_speed);
-
-typedef void (*motor_limit_torque_t)(const struct device *dev, float max_torque, float min_torque);
-
-/**
- * @brief Servo Motor driver API
+ * @brief Motor driver API
  */
 __subsystem struct motor_driver_api {
-	motor_api_stat_speed_t motor_get_speed;
-	motor_api_stat_torque_t motor_get_torque;
-	motor_api_stat_angle_t motor_get_angle;
-	motor_api_speed_t motor_set_speed;
-	motor_api_torque_t motor_set_torque;
-	motor_api_angle_t motor_set_angle;
-	motor_api_mode_t motor_set_mode;
 	motor_api_ctrl_t motor_control;
-	motor_limit_speed_t motor_limit_speed;
-	motor_limit_torque_t motor_limit_torque;
+	motor_api_set_t motor_set;
+	motor_api_stat_t motor_get;
 };
 
 /**
- * @brief Motor error codes
- */
-enum MotorError {
-	MOTOR_SUCCESS = 0,
-	MOTOR_ERROR_INIT = -1,
-	MOTOR_ERROR_COMM = -2,
-	MOTOR_ERROR_UNKNOWN = -3
-};
-
-/**
- * @brief 获取电机当前扭矩
+ * @brief 获取电机当前状态
  *
  * @param dev 电机设备指针
- * @return float 当前扭矩值(N·m)，错误时返回负值
+ * @return int 成功: 0, 失败: 负值
  */
-__syscall float motor_get_torque(const struct device *dev);
+__syscall int motor_get(const struct device *dev, motor_status_t *status);
 
-static inline float z_impl_motor_get_torque(const struct device *dev)
+static inline int z_impl_motor_get(const struct device *dev, motor_status_t *status)
 {
 	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_get_torque == NULL) {
+	if (api->motor_get == NULL) {
 		return -ENOSYS;
 	}
-	return api->motor_get_torque(dev);
+	return api->motor_get(dev, status);
 }
 
 /**
- * @brief 获取电机当前转速
+ * @brief 设置电机目标状态
  *
  * @param dev 电机设备指针
- * @return float 当前转速(RPM)，错误时返回负值
+ * @param status 目标状态
+ * @return int 成功: 0, 失败: 负值
  */
-__syscall float motor_get_speed(const struct device *dev);
+__syscall int motor_set(const struct device *dev, motor_status_t *status);
 
-static inline float z_impl_motor_get_speed(const struct device *dev)
+static inline int z_impl_motor_set(const struct device *dev, motor_status_t *status)
 {
 	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_get_speed == NULL) {
+	if (api->motor_set == NULL) {
 		return -ENOSYS;
 	}
-	return api->motor_get_speed(dev);
-}
-
-/**
- * @brief 获取电机当前角度
- *
- * @param dev 电机设备指针
- * @return float 当前角度(度)，错误时返回负值
- */
-__syscall float motor_get_angle(const struct device *dev);
-
-static inline float z_impl_motor_get_angle(const struct device *dev)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_get_angle == NULL) {
-		return -ENOSYS;
-	}
-	return api->motor_get_angle(dev);
-}
-
-/**
- * @brief 设置电机目标速度
- *
- * @param dev 电机设备指针
- * @param speed_rpm 目标转速(RPM)
- * @return int 0:成功，负值:错误码
- */
-__syscall int motor_set_speed(const struct device *dev, float speed_rpm);
-
-static inline int z_impl_motor_set_speed(const struct device *dev, float speed_rpm)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_set_speed == NULL) {
-		return -ENOSYS;
-	}
-	return api->motor_set_speed(dev, speed_rpm);
-}
-
-/**
- * @brief 设置电机目标角度
- *
- * @param dev 电机设备指针
- * @param angle 目标角度(度)
- * @return int 0:成功，负值:错误码
- */
-__syscall int motor_set_angle(const struct device *dev, float angle);
-
-static inline int z_impl_motor_set_angle(const struct device *dev, float angle)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_set_angle == NULL) {
-		return -ENOSYS;
-	}
-	return api->motor_set_angle(dev, angle);
-}
-
-/**
- * @brief 设置电机目标扭矩
- *
- * @param dev 电机设备指针
- * @param torque 目标扭矩(N·m)
- * @return int 0:成功，负值:错误码
- */
-__syscall int motor_set_torque(const struct device *dev, float torque);
-
-static inline int z_impl_motor_set_torque(const struct device *dev, float torque)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_set_torque == NULL) {
-		return -ENOSYS;
-	}
-	return api->motor_set_torque(dev, torque);
+	return api->motor_set(dev, status);
 }
 
 /**
@@ -328,59 +236,9 @@ static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd
 		return;
 	}
 	api->motor_control(dev, cmd);
-	return;
 }
 
-/**
- * @brief 设置电机工作模式
- *
- * @param dev 电机设备指针
- * @param mode 工作模式
- * @return int 0:成功，负值:错误码
- */
-__syscall int motor_set_mode(const struct device *dev, enum motor_mode mode);
-
-static inline int z_impl_motor_set_mode(const struct device *dev, enum motor_mode mode)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_set_mode == NULL) {
-		return -ENOSYS;
-	}
-	return api->motor_set_mode(dev, mode);
-}
-
-__syscall void motor_limit_speed(const struct device *dev, float max_speed, float min_speed);
-
-static inline void z_impl_motor_limit_speed(const struct device *dev, float max_speed,
-					    float min_speed)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_limit_speed == NULL) {
-		return;
-	}
-	api->motor_limit_speed(dev, max_speed, min_speed);
-}
-
-__syscall void motor_limit_torque(const struct device *dev, float max_torque, float min_torque);
-
-static inline void z_impl_motor_limit_torque(const struct device *dev, float max_torque,
-					     float min_torque)
-{
-	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
-	if (api->motor_limit_torque == NULL) {
-		return;
-	}
-	api->motor_limit_torque(dev, max_torque, min_torque);
-}
-
-#define CAN_COUNT DT_NUM_INST_STATUS_OKAY(vnd_canbus)
-
-#define DT_DRIVER_GET_CANBUS_IDT(node_id) DT_PHANDLE(node_id, can_channel)
-#define DT_DRIVER_GET_CANPHY_IDT(node_id) DT_PHANDLE(DT_DRIVER_GET_CANBUS_IDT(node_id), can_device)
-
-#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_DRIVER_GET_CANPHY_IDT(node_id))
-
-#define DT_GET_CANPHY_BY_BUS(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
+#define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_channel))
 
 #define NEW_PID_INSTANCE_STRUCT(node_id, prop, idx)                                                \
 	PID_NEW_INSTANCE(DT_PROP_BY_IDX(node_id, prop, idx), DT_NODE_FULL_NAME_UNQUOTED(node_id))

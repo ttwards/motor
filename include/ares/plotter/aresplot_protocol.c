@@ -230,7 +230,7 @@ static void handle_cmd_set_variable(void)
 	memcpy(&float_val, temp_float_bytes, sizeof(float));
 
 	LOG_DBG("Setting variable: addr=0x%08x, type=%d, value=%f", temp_addr, original_type,
-		float_val);
+		(double)float_val);
 
 	aresplot_user_critical_enter();
 	switch (original_type) {

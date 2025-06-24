@@ -7,7 +7,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/motor.h>
 
-#define CAN_SEND_STACK_SIZE 1536
+#define CAN_SEND_STACK_SIZE 2048
 #define CAN_SEND_PRIORITY   -1
 
 #define HIGH_BYTE(x)           ((x) >> 8)
@@ -34,8 +34,7 @@
 	DEVICE_DT_GET(DT_PHANDLE(DT_CHILD_BY_IDX(node_id, idx)))
 #define CANPHY_BY_IDX(idx) GET_CANPHY_POINTER_BY_IDX(CAN_BUS_PATH, idx)
 
-#define MOTOR_COUNT sizeof(motor_devices) / sizeof(motor_devices[0])
-#define CAN_COUNT   DT_NUM_INST_STATUS_OKAY(vnd_canbus)
+#define DJI_MOTOR_COUNT sizeof(motor_devices) / sizeof(motor_devices[0])
 
 #define GET_CAN_CHANNEL_IDT(node_id) DT_PHANDLE(node_id, can_channel)
 #define GET_CAN_DEV(node_id)         DEVICE_DT_GET(DT_PHANDLE(node_id, can_device))
@@ -56,11 +55,14 @@
 
 #define DT_DRIVER_GET_CANBUS_ID(inst) DT_NODE_CHILD_IDX(DT_DRIVER_INST_GET_CANBUS_IDT(inst))
 
-#define DMOTOR_DATA_INST(inst)                                                                     \
-	static struct dji_motor_data dji_motor_data_##inst = {                                     \
+#define DT_MOTOR_NAME(node)      DT_NODE_FULL_NAME_UNQUOTED(node)
+#define DT_MOTOR_NAME_INST(inst) DT_MOTOR_NAME(DT_DRV_INST(inst))
+
+#define DMOTOR_DATA(inst, node, name)                                                              \
+	static struct dji_motor_data DT_CAT(dji_motor_data_, name) = {                             \
 		.common = MOTOR_DT_DRIVER_DATA_INST_GET(inst),                                     \
-		.canbus_id = DT_DRIVER_GET_CANBUS_ID(inst),                                        \
-		.ctrl_struct = &ctrl_structs[DT_DRIVER_GET_CANBUS_ID(inst)],                       \
+		.canbus_id = 0,                                                                    \
+		.ctrl_struct = NULL,                                                               \
 		.online = false,                                                                   \
 		.convert_num = 0,                                                                  \
 		.current_mode_index = -1,                                                          \
@@ -78,15 +80,23 @@
 		.pid_ref_input = 0,                                                                \
 	};
 
-#define DMOTOR_CONFIG_INST(inst)                                                                   \
-	static const struct dji_motor_config dji_motor_cfg_##inst = {                              \
+#define CONFIG_GET_FOLLOW(node) DT_PHANDLE(node, follow)
+
+#define DMOTOR_CONFIG(inst, node, name)                                                            \
+	static const struct dji_motor_config DT_CAT(dji_motor_cfg_, name) = {                      \
 		.common = MOTOR_DT_DRIVER_CONFIG_INST_GET(inst),                                   \
-		.gear_ratio = (float)(DT_PROP(DT_DRV_INST(inst), is_gm6020) ? 1.0f : 4.0f) *       \
-			      (float)DT_STRING_UNQUOTED(DT_DRV_INST(inst), gear_ratio),            \
-		.is_gm6020 = DT_PROP(DT_DRV_INST(inst), is_gm6020),                                \
-		.is_m3508 = DT_PROP(DT_DRV_INST(inst), is_m3508),                                  \
-		.is_m2006 = DT_PROP(DT_DRV_INST(inst), is_m2006),                                  \
+		.gear_ratio = (float)DT_STRING_UNQUOTED(node, gear_ratio),                         \
+		.is_gm6020 = DT_PROP(node, is_gm6020),                                             \
+		.is_m3508 = DT_PROP(node, is_m3508),                                               \
+		.is_m2006 = DT_PROP(node, is_m2006),                                               \
+		.is_dm_motor = DT_PROP(node, is_dm_motor),                                         \
+		.dm_i_max = DT_STRING_UNQUOTED_OR(node, dm_i_max, 0.0f),                           \
+		.dm_torque_ratio = DT_STRING_UNQUOTED_OR(node, dm_torque_ratio, 0.0f),             \
+		.follow = DEVICE_DT_GET_OR_NULL(CONFIG_GET_FOLLOW(node)),                          \
 	};
+
+#define DMOTOR_DATA_INST(inst)   DMOTOR_DATA(inst, DT_DRV_INST(inst), DT_MOTOR_NAME_INST(inst))
+#define DMOTOR_CONFIG_INST(inst) DMOTOR_CONFIG(inst, DT_DRV_INST(inst), DT_MOTOR_NAME_INST(inst))
 
 #define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \
 	DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, __VA_ARGS__)
@@ -94,10 +104,12 @@
 #define MOTOR_DEVICE_DT_INST_DEFINE(inst, ...)                                                     \
 	MOTOR_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
 
-#define DMOTOR_DEFINE_INST(inst)                                                                   \
-	MOTOR_DEVICE_DT_INST_DEFINE(inst, dji_init, NULL, &dji_motor_data_##inst,                  \
-				    &dji_motor_cfg_##inst, POST_KERNEL,                            \
-				    CONFIG_MOTOR_INIT_PRIORITY, &motor_api_funcs);
+#define DMOTOR_DEFINE(inst, name)                                                                  \
+	MOTOR_DEVICE_DT_INST_DEFINE(inst, dji_init, NULL, &DT_CAT(dji_motor_data_, name),          \
+				    &DT_CAT(dji_motor_cfg_, name), POST_KERNEL,                    \
+				    CONFIG_MOTOR_INIT_PRIORITY, &motor_api_funcs)
+
+#define DMOTOR_DEFINE_INST(inst) DMOTOR_DEFINE(inst, DT_MOTOR_NAME_INST(inst))
 
 #define DMOTOR_INST(inst)                                                                          \
 	MOTOR_DT_DRIVER_PID_DEFINE(DT_DRV_INST(inst))                                              \

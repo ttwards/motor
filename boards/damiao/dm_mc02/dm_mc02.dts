@@ -22,7 +22,6 @@
 		zephyr,sram = &sram0;
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
-		zephyr,canbus = &fdcan1;
 		zephyr,dtcm = &dtcm;
 		zephyr,itcm = &itcm;
 		ares,pwm = &heater;
@@ -43,23 +42,6 @@
 			gpios = <&gpioa 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 			label = "User Button";
 			zephyr,code = <INPUT_KEY_0>;
-		};
-	};
-	canbus {
-		canbus1: canbus1 {
-				compatible = "vnd,canbus";
-				status = "okay";
-				can_device = <&fdcan1>;
-		};
-		canbus2: canbus2 {
-				compatible = "vnd,canbus";
-				status = "okay";
-				can_device = <&fdcan2>;
-		};
-		canbus3: canbus3 {
-				compatible = "vnd,canbus";
-				status = "okay";
-				can_device = <&fdcan3>;
 		};
 	};
     

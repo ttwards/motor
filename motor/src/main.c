@@ -37,10 +37,12 @@ const struct device *motor2 = DEVICE_DT_GET(MOTOR2_NODE);
 /* CAN Feedback to console*/
 void console_feedback(void *arg1, void *arg2, void *arg3)
 {
+	motor_status_t status;
 	for (int i = 0; i < 10000; i++) {
-		motor_set_speed(motor1, 200);
-		motor_set_speed(motor2, 200);
-		LOG_INF("Speed: %.2f, Set: %.2f", (double)motor_get_speed(motor1), (double)i);
+		motor_get(motor1, &status);
+		LOG_INF("Motor 1: Speed: %.2f, Set: %.2f", (double)status.rpm, (double)i);
+		motor_get(motor2, &status);
+		LOG_INF("Motor 2: Speed: %.2f, Set: %.2f", (double)status.rpm, (double)i);
 		k_msleep(5);
 	}
 }
@@ -49,10 +51,9 @@ K_THREAD_DEFINE(feedback_thread, FEEDBACK_STACK_SIZE, console_feedback, NULL, NU
 
 int main(void)
 {
-	board_init();
-
 	k_msleep(1000);
 	motor_control(motor1, ENABLE_MOTOR);
+	motor_control(motor2, ENABLE_MOTOR);
 	while (1) {
 		k_msleep(1500);
 	}

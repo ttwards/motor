@@ -23,6 +23,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/time_units.h>
+#include "../common/common.h"
 
 #define DT_DRV_COMPAT dji_motor
 
@@ -30,17 +31,17 @@ LOG_MODULE_REGISTER(motor_dji, CONFIG_MOTOR_LOG_LEVEL);
 
 const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DJI_DEVICE_POINTER)};
 
-const struct device *can_devices[] = {
-	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CAN_DEVICE_POINTER, (, ))};
-
-#define CTRL_STRUCT_DATA(node_id)                                                                  \
+#define CTRL_STRUCT_DATA(i, _)                                                                     \
 	{                                                                                          \
-		.can_dev = DT_GET_CANPHY_BY_BUS(node_id),                                          \
+		.can_dev = NULL,                                                                   \
 		.flags = 0,                                                                        \
 		.full = {false},                                                                   \
 		.mask = {0},                                                                       \
 		.mapping =                                                                         \
 			{                                                                          \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
+				{-1, -1, -1, -1},                                                  \
 				{-1, -1, -1, -1},                                                  \
 				{-1, -1, -1, -1},                                                  \
 				{-1, -1, -1, -1},                                                  \
@@ -61,6 +62,12 @@ static int frameID_to_index(int tx_id)
 		return 3;
 	} else if (tx_id == 0x2FF) {
 		return 4;
+	} else if (tx_id == 0x300) {
+		return 5;
+	} else if (tx_id == 0x3FE) {
+		return 6;
+	} else if (tx_id == 0x4FE) {
+		return 7;
 	}
 	return -1; // Return a default value if no match is found
 }
@@ -77,6 +84,12 @@ static int index_to_frameID(int frames_id)
 		return 0x2FE;
 	} else if (frames_id == 4) {
 		return 0x2FF;
+	} else if (frames_id == 5) {
+		return 0x300;
+	} else if (frames_id == 6) {
+		return 0x3FE;
+	} else if (frames_id == 7) {
+		return 0x4FE;
 	}
 	return -1;
 }
@@ -99,18 +112,8 @@ static int16_t to16t(float value)
 	}
 }
 
-struct motor_controller ctrl_structs[CAN_COUNT] = {
-	DT_FOREACH_CHILD_STATUS_OKAY_SEP(CAN_BUS_PATH, CTRL_STRUCT_DATA, (, ))};
-
-static inline motor_id_t canbus_id(const struct device *dev)
-{
-	for (int i = 0; i < CAN_COUNT; i++) {
-		if (can_devices[i] == dev) {
-			return i;
-		}
-	}
-	return -1;
-}
+struct motor_controller ctrl_structs[CONFIG_CAN_COUNT] = {
+	LISTIFY(CONFIG_CAN_COUNT, CTRL_STRUCT_DATA, (, ))};
 
 static inline motor_id_t motor_id(const struct device *dev)
 {
@@ -135,7 +138,6 @@ void dji_torque_limit(const struct device *dev, float max_torque, float min_torq
 int dji_set_speed(const struct device *dev, float speed_rpm)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
 
 	if (speed_rpm > data->common.speed_limit[1]) {
 		speed_rpm = data->common.speed_limit[1];
@@ -144,56 +146,20 @@ int dji_set_speed(const struct device *dev, float speed_rpm)
 	}
 
 	data->target_rpm = speed_rpm;
-	data->current_mode_index = -1;
-	for (int i = 0; i < sizeof(cfg->common.pid_datas) / sizeof(cfg->common.pid_datas[0]); i++) {
-		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-			if (data->current_mode_index == -1) {
-				data->current_mode_index = i;
-				data->target_torque = 0;
-				return -ENOEXEC;
-			}
-			break;
-		}
-		if (strcmp(cfg->common.capabilities[i], "speed") == 0) {
-			pid_calc(cfg->common.pid_datas[i]);
-			data->current_mode_index = i;
-		}
-	}
-	// ctrl_struct->current[id] = pid_calc(dev);
+
 	return 0;
 }
 
 int dji_set_angle(const struct device *dev, float angle)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
-
 	data->target_angle = angle;
-
-	data->current_mode_index = -1;
-	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
-		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-			if (data->current_mode_index == -1) {
-				data->current_mode_index = i;
-				data->target_torque = 0;
-				return -ENOEXEC;
-			}
-			break;
-		}
-		if (strcmp(cfg->common.capabilities[i], "angle") == 0) {
-			pid_calc(cfg->common.pid_datas[i]);
-			data->current_mode_index = i;
-		}
-	}
-
-	// ctrl_struct->current[id] = pid_calc(dev);
 	return 0;
 }
 
 int dji_set_torque(const struct device *dev, float torque)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *cfg = dev->config;
 
 	if (torque > data->common.torque_limit[1]) {
 		torque = data->common.torque_limit[1];
@@ -202,17 +168,80 @@ int dji_set_torque(const struct device *dev, float torque)
 	}
 
 	data->target_torque = torque;
+
+	return 0;
+}
+
+int dji_set_mode(const struct device *dev, enum motor_mode mode)
+{
+	struct dji_motor_data *data = dev->data;
+	const struct dji_motor_config *cfg = dev->config;
+
+	char mode_str[10];
+	switch (mode) {
+	case ML_TORQUE:
+		strcpy(mode_str, "torque");
+		break;
+	case ML_ANGLE:
+		strcpy(mode_str, "angle");
+		break;
+	case ML_SPEED:
+		strcpy(mode_str, "speed");
+		break;
+	default:
+		LOG_ERR("Unsupported motor mode: %d", mode);
+		return -ENOSYS;
+	}
+
+	data->current_mode_index = -1;
+
 	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.pid_datas); i++) {
-		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+		if (cfg->common.pid_datas[i]->pid_dev == NULL && mode == ML_TORQUE) {
 			data->current_mode_index = i;
 			break;
 		}
-		if (strcmp(cfg->common.capabilities[i], "torque") == 0) {
+		if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
 			pid_calc(cfg->common.pid_datas[i]);
 			data->current_mode_index = i;
+			break;
 		}
 	}
-	// ctrl_struct->current[id] = pid_calc(dev);
+
+	if (data->current_mode_index == -1) {
+		LOG_ERR("No motor mode found for %s", mode_str);
+		return -ENOSYS;
+	}
+
+	data->common.mode = mode;
+
+	return 0;
+}
+
+int dji_set(const struct device *dev, motor_status_t *status)
+{
+	struct dji_motor_data *data = dev->data;
+
+	if (status->mode == ML_TORQUE) {
+		dji_set_torque(dev, status->torque);
+	} else if (status->mode == ML_ANGLE) {
+		dji_set_angle(dev, status->angle);
+	} else if (status->mode == ML_SPEED) {
+		dji_set_speed(dev, status->rpm);
+	} else {
+		LOG_ERR("Unsupported motor mode: %d", status->mode);
+		return -ENOSYS;
+	}
+
+	dji_set_mode(dev, status->mode);
+	data->common.mode = status->mode;
+
+	if (status->speed_limit[0] > 0 || status->speed_limit[1] > 0) {
+		dji_speed_limit(dev, status->speed_limit[1], status->speed_limit[0]);
+	}
+	if (status->torque_limit[0] > 0 || status->torque_limit[1] > 0) {
+		dji_torque_limit(dev, status->torque_limit[1], status->torque_limit[0]);
+	}
+
 	return 0;
 }
 
@@ -231,35 +260,57 @@ void dji_control(const struct device *dev, enum motor_cmd cmd)
 	case DISABLE_MOTOR:
 		data->online = false;
 		break;
-	case SET_ZERO_OFFSET:
+	case SET_ZERO:
 		data->angle_add = 0;
-		data->common.angle = 0;
+		data->angle_offset = data->common.angle;
+		if (cfg->is_dm_motor) {
+			frame.id = 0x7FF;
+			frame.flags = 0;
+			frame.dlc = 4;
+			frame.data[0] = (cfg->common.rx_id - 0x200) & 0xFF;
+			frame.data[1] = (cfg->common.rx_id - 0x200) >> 8;
+			frame.data[2] = 0x55;
+			frame.data[3] = 0x3C;
+			can_send_queued(cfg->common.phy, &frame);
+		}
 		break;
 	case CLEAR_PID:
 		break;
 	case CLEAR_ERROR:
 		data->missed_times = 0;
 		data->online = true;
+		if (cfg->is_dm_motor) {
+			frame.id = 0x7FF;
+			frame.flags = 0;
+			frame.dlc = 4;
+			frame.data[0] = (cfg->common.rx_id - 0x200) & 0xFF;
+			frame.data[1] = (cfg->common.rx_id - 0x200) >> 8;
+			frame.data[2] = 0x55;
+			frame.data[3] = 0x50;
+			can_send_queued(cfg->common.phy, &frame);
+		}
 		break;
 	}
 }
 
-float dji_get_angle(const struct device *dev)
+int dji_get(const struct device *dev, motor_status_t *status)
 {
 	struct dji_motor_data *data = dev->data;
-	return fmodf(data->common.angle, 360.0f);
-}
+	const struct dji_motor_config *cfg = dev->config;
 
-float dji_get_speed(const struct device *dev)
-{
-	struct dji_motor_data *data = dev->data;
-	return data->common.rpm;
-}
+	if (strcmp(cfg->common.capabilities[data->current_mode_index], "torque") == 0) {
+		status->mode = ML_TORQUE;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "angle") == 0) {
+		status->mode = ML_ANGLE;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "speed") == 0) {
+		status->mode = ML_SPEED;
+	} else if (strcmp(cfg->common.capabilities[data->current_mode_index], "mit") == 0) {
+		status->mode = MIT;
+	}
 
-float dji_get_torque(const struct device *dev)
-{
-	struct dji_motor_data *data = dev->data;
-	return data->common.torque;
+	memcpy(status, &data->common, sizeof(motor_status_t));
+
+	return 0;
 }
 
 int dji_init(const struct device *dev)
@@ -272,11 +323,21 @@ int dji_init(const struct device *dev)
 	if (dev) {
 		const struct dji_motor_config *cfg = dev->config;
 		struct dji_motor_data *data = dev->data;
+		data->canbus_id = reg_can_dev(cfg->common.phy);
+		data->ctrl_struct = &ctrl_structs[data->canbus_id];
+		data->ctrl_struct->can_dev = (struct device *)cfg->common.phy;
 		uint8_t frame_id = frameID_to_index(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
-		data->ctrl_struct->mask[frame_id] |= 1 << id;
+		if (!cfg->follow) {
+			data->ctrl_struct->mask[frame_id] |= 1 << id;
+		} else {
+			const struct device *follow_dev = cfg->follow;
+			const struct dji_motor_config *follow_cfg = follow_dev->config;
+			uint8_t follow_frame_id = frameID_to_index(follow_cfg->common.tx_id);
+			data->ctrl_struct->mask[follow_frame_id] |= 1 << motor_id(follow_dev);
+		}
 		if (data->ctrl_struct->rx_ids[id]) {
-			LOG_ERR("Conflicting motor id: %d, dev name: %s", id, dev->name);
+			LOG_ERR("Conflicting motor id: %d, dev name: %s", id + 1, dev->name);
 		}
 		data->ctrl_struct->rx_ids[id] = cfg->common.rx_id;
 
@@ -327,6 +388,8 @@ int dji_init(const struct device *dev)
 			data->convert_num = M3508_CONVERT_NUM;
 		} else if (cfg->is_m2006) {
 			data->convert_num = M2006_CONVERT_NUM;
+		} else if (cfg->is_dm_motor) {
+			data->convert_num = DM_MOTOR_CONVERT_NUM;
 		} else {
 			LOG_ERR("Unsupported motor type");
 		}
@@ -352,16 +415,13 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	struct can_frame rx_frame = *frame;
 
 	struct dji_motor_data *data = dev->data;
+	const struct dji_motor_config *cfg = dev->config;
 	uint16_t id = motor_id(dev);
-	uint8_t bus_id = canbus_id(can_dev);
-	k_spinlock_key_t key;
-	if (k_spin_trylock(&data->data_input_lock, &key) != 0) {
-		return;
-	}
 
 	if (!data) {
 		return;
 	}
+
 	if (data->missed_times > 3) {
 		data->missed_times = 0;
 		data->online = true;
@@ -369,26 +429,41 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 			(const struct dji_motor_config *)dev->config;
 		int8_t frame_id = frameID_to_index(motor_cfg->common.tx_id);
 		data->ctrl_struct->mask[frame_id] |= 1 << id;
-		LOG_ERR("Motor \"%s\" on canbus %d is responding again, resuming...", dev->name,
-			bus_id);
+		LOG_ERR("Motor \"%s\" on canbus \"%s\" is responding again.", dev->name,
+			motor_cfg->common.phy->name);
 	} else if (data->missed_times > 0) {
 		data->missed_times--;
 	}
+
 	// Store in RAW data. Process when API is called.
 	// Using FPU in ISR is not recommended, since it requires actions on registers
 	data->RAWprev_angle = data->RAWangle;
 	data->RAWangle = COMBINE_HL8(rx_frame.data[0], rx_frame.data[1]);
+	int delta = data->RAWangle - data->RAWprev_angle;
+	if (data->RAWangle < 2048 && data->RAWprev_angle > 6144) {
+		delta += 8192;
+	} else if (data->RAWangle > 6144 && data->RAWprev_angle < 2048) {
+		delta -= 8192;
+	}
+	data->angle_add += delta;
 	data->RAWrpm = COMBINE_HL8(rx_frame.data[2], rx_frame.data[3]);
 	data->RAWcurrent = COMBINE_HL8(rx_frame.data[4], rx_frame.data[5]);
 	data->RAWtemp = rx_frame.data[6];
 	data->ctrl_struct->flags |= 1 << id;
 	data->prev_time = (data->curr_time == 0) ? (curr_time - 1) : data->curr_time;
 	data->curr_time = curr_time;
+	data->calculated = false;
+
+	if (cfg->follow) {
+		goto exit;
+	}
+
 	bool full = false;
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < CAN_TX_ID_CNT; i++) {
 		uint8_t combined = data->ctrl_struct->mask[i] & data->ctrl_struct->flags;
-		if (combined == data->ctrl_struct->mask[i] && data->ctrl_struct->mask[i]) {
-			data->ctrl_struct->flags = 0;
+		if ((combined & 0xF) == (data->ctrl_struct->mask[i] & 0xF) &&
+		    data->ctrl_struct->mask[i]) {
+			data->ctrl_struct->flags &= ~(data->ctrl_struct->mask[i]);
 			data->ctrl_struct->full[i] = true;
 			full = true;
 		}
@@ -397,60 +472,41 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	if (full && !k_work_is_pending(&data->ctrl_struct->full_handle)) {
 		k_work_submit_to_queue(&dji_work_queue, &data->ctrl_struct->full_handle);
 	}
-	// k_thread_resume(dji_motor_ctrl_thread);
-	k_spin_unlock(&data->data_input_lock, key);
-	return;
-}
 
-static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
-{
-	struct k_sem *queue_sem = user_data;
-	if (!error || error == -EIO) {
-		k_sem_give(queue_sem);
-	} else {
-		LOG_ERR("CAN TX error: %d on canbus %d", error, canbus_id(can_dev));
-	}
+exit:
+	return;
 }
 
 static void proceed_delta_degree(const struct device *dev)
 {
 	struct dji_motor_data *data = dev->data;
-	const struct dji_motor_config *config_temp = dev->config;
-	int delta = data->RAWangle - data->RAWprev_angle;
-	if (data->RAWangle < 2048 && data->RAWprev_angle > 6144) {
-		delta += 8192;
-		data->common.round_cnt++;
-		if (data->target_angle < 0 || data->target_angle > 360) {
-			data->target_angle -= 360;
-		}
-	} else if (data->RAWangle > 6144 && data->RAWprev_angle < 2048) {
-		delta -= 8192;
-		data->common.round_cnt--;
-		if (data->target_angle < 0 || data->target_angle > 360) {
-			data->target_angle += 360;
-		}
-	}
+	const struct dji_motor_config *config = dev->config;
 
-	if (fabsf(config_temp->gear_ratio - 1) > 0.001f) {
-		// I dont know why RAW_angle for M3508 is 4 times of angle
-		data->angle_add += (float)(delta)*convert[data->convert_num][ANGLE2DEGREE] /
-				   (config_temp->gear_ratio);
+	if (fabsf(config->gear_ratio - 1) > 0.001f) {
+		data->common.sum_angle = (float)(data->angle_add) *
+					 convert[data->convert_num][ANGLE2DEGREE] /
+					 config->gear_ratio;
 
-		data->common.angle = fmodf(data->angle_add, 360.0f);
-		while (data->common.angle < 0) {
+		data->common.angle = fmodf(data->common.sum_angle, 360.0f);
+		if (data->common.angle < 0) {
 			data->common.angle += 360.0f;
 		}
 	} else {
+		data->common.sum_angle =
+			(float)(data->angle_add) * convert[data->convert_num][ANGLE2DEGREE];
 		data->common.angle =
-			(float)(data->RAWangle) * convert[data->convert_num][ANGLE2DEGREE];
+			(float)(data->RAWangle) * convert[data->convert_num][ANGLE2DEGREE] -
+			data->angle_offset;
 	}
 
-	float delta_angle = data->common.angle - data->target_angle;
+	float delta_angle = data->common.sum_angle - data->target_angle;
 
-	if (delta_angle > 180) {
-		delta_angle -= 360.0f;
-	} else if (delta_angle < -180) {
-		delta_angle += 360.0f;
+	if (fabsf(config->gear_ratio - 1) < 0.001f) {
+		if (delta_angle > 180) {
+			delta_angle -= 360.0f;
+		} else if (delta_angle < -180) {
+			delta_angle += 360.0f;
+		}
 	}
 
 	data->pid_angle_input = delta_angle;
@@ -459,31 +515,36 @@ static void proceed_delta_degree(const struct device *dev)
 static void can_pack_add(uint8_t *data, struct device *motor_dev, uint8_t num)
 {
 	struct dji_motor_data *motor_data = motor_dev->data;
+	const struct dji_motor_config *cfg = motor_dev->config;
 
 	int16_t value = to16t(motor_data->target_current);
 
-	data[num * 2] = HIGH_BYTE(value);
-	data[num * 2 + 1] = LOW_BYTE(value);
+	if (!cfg->is_dm_motor) {
+		data[num * 2] = HIGH_BYTE(value);
+		data[num * 2 + 1] = LOW_BYTE(value);
+	} else {
+		data[num * 2] = LOW_BYTE(value);
+		data[num * 2 + 1] = HIGH_BYTE(value);
+	}
 }
 
-static void dji_timeout_handle(const struct device *dev, uint32_t curr_time,
-			       struct motor_controller *ctrl_struct)
+static void dji_timeout_handle(const struct device *dev, uint32_t curr_time)
 {
-	struct dji_motor_data *motor_data = (struct dji_motor_data *)dev->data;
-	const struct dji_motor_config *motor_cfg = (const struct dji_motor_config *)dev->config;
+	struct dji_motor_data *data = (struct dji_motor_data *)dev->data;
+	const struct dji_motor_config *cfg = (const struct dji_motor_config *)dev->config;
 
-	if (motor_data->online == false) {
+	if (data->online == false) {
 		return;
 	}
-	uint32_t prev_time = motor_data->curr_time;
+	uint32_t prev_time = data->curr_time;
 	if (k_cyc_to_us_near32(curr_time - prev_time) > 2000 || curr_time - prev_time > 100000) {
-		motor_data->missed_times++;
-		if (motor_data->missed_times > 3) {
-			LOG_ERR("Motor \"%s\" on canbus %d is not responding", dev->name,
-				(int)(ctrl_struct - ctrl_structs));
-			ctrl_struct->mask[frameID_to_index(motor_cfg->common.tx_id)] &=
+		data->missed_times++;
+		if (data->missed_times > 3) {
+			LOG_ERR("Motor \"%s\" on canbus \"%s\" is not responding", dev->name,
+				cfg->common.phy->name);
+			data->ctrl_struct->mask[frameID_to_index(cfg->common.tx_id)] &=
 				~(1 << motor_id(dev));
-			motor_data->online = false;
+			data->online = false;
 		}
 	}
 }
@@ -496,32 +557,60 @@ static void motor_calc(const struct device *dev)
 	if (k_spin_trylock(&data->data_input_lock, &key) != 0) {
 		return;
 	}
-	const struct dji_motor_config *config_temp = dev->config;
+	const struct dji_motor_config *config = dev->config;
 	// Proceed the RAW data
 	// Add up to avoid circular overflow
 	proceed_delta_degree(dev);
 
-	float rpm = data->RAWrpm * convert[data->convert_num][SPEED2RPM] / config_temp->gear_ratio;
-	data->common.rpm = rpm;
-	data->common.torque = data->RAWcurrent * convert[data->convert_num][CURRENT2TORQUE] *
-			      config_temp->gear_ratio;
+	data->common.rpm =
+		data->RAWrpm * convert[data->convert_num][SPEED2RPM] / config->gear_ratio;
+	if (!config->is_dm_motor) {
+		data->common.torque = data->RAWcurrent *
+				      convert[data->convert_num][CURRENT2TORQUE] *
+				      config->gear_ratio;
+	} else {
+		data->common.torque =
+			data->RAWcurrent * config->dm_torque_ratio * config->gear_ratio * 0.001f;
+	}
 
-	for (int i = data->current_mode_index; i < SIZE_OF_ARRAY(config_temp->common.capabilities);
+	if (config->follow) {
+		const struct device *follow_dev = config->follow;
+		struct dji_motor_data *follow_data = follow_dev->data;
+		if (!follow_data->calculated) {
+			motor_calc(follow_dev);
+			follow_data->calculated = true;
+			data->target_torque = follow_data->target_torque;
+		} else if (follow_data->online) {
+			data->target_torque = follow_data->target_torque;
+		} else {
+			data->target_torque = 0;
+		}
+		goto torque2current;
+	}
+
+	for (int i = data->current_mode_index; i < SIZE_OF_ARRAY(config->common.capabilities);
 	     i++) {
-		if (config_temp->common.pid_datas[i]->pid_dev == NULL) {
+		if (config->common.pid_datas[i]->pid_dev == NULL) {
+torque2current:
 			if (data->target_torque > data->common.torque_limit[1]) {
 				data->target_torque = data->common.torque_limit[1];
 			} else if (data->target_torque < data->common.torque_limit[0]) {
 				data->target_torque = data->common.torque_limit[0];
 			}
-			data->target_current = data->target_torque / config_temp->gear_ratio *
-					       convert[data->convert_num][TORQUE2CURRENT];
+			if (!config->is_dm_motor) {
+				data->target_current = data->target_torque / config->gear_ratio *
+						       convert[data->convert_num][TORQUE2CURRENT];
+			} else {
+				data->target_current = data->target_torque * 10000 /
+						       (config->dm_torque_ratio * config->dm_i_max *
+							config->gear_ratio);
+			}
 			break;
 		}
 
-		pid_calc(config_temp->common.pid_datas[i]);
+		pid_calc(config->common.pid_datas[i]);
 
-		if (strcmp(config_temp->common.capabilities[i], "angle") == 0) {
+		if (strcmp(config->common.capabilities[i], "angle") == 0) {
 			if (data->target_rpm > data->common.speed_limit[1]) {
 				data->target_rpm = data->common.speed_limit[1];
 			} else if (data->target_rpm < data->common.speed_limit[0]) {
@@ -529,9 +618,9 @@ static void motor_calc(const struct device *dev)
 			}
 		}
 
-		if (strcmp(config_temp->common.capabilities[i], "torque") == 0) {
+		if (strcmp(config->common.capabilities[i], "torque") == 0) {
 			break;
-		} else if (strcmp(config_temp->common.capabilities[i], "mit") == 0) {
+		} else if (strcmp(config->common.capabilities[i], "mit") == 0) {
 			break;
 		}
 	}
@@ -558,18 +647,8 @@ void dji_miss_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	int curr_time = k_cycle_get_32();
-	for (int i = 0; i < CAN_COUNT; i++) {
-		if (k_sem_count_get(&ctrl_structs[i].tx_queue_sem) < 1) {
-			// can_stop(ctrl_structs[i].can_dev);
-			// can_start(ctrl_structs[i].can_dev);
-			// k_sem_reset(&ctrl_structs[i].tx_queue_sem);
-		}
-		for (int j = 0; j < 8; j++) {
-			if (ctrl_structs[i].motor_devs[j]) {
-				dji_timeout_handle(ctrl_structs[i].motor_devs[j], curr_time,
-						   &ctrl_structs[i]);
-			}
-		}
+	for (int i = 0; i < DJI_MOTOR_COUNT; i++) {
+		dji_timeout_handle(motor_devices[i], curr_time);
 	}
 }
 
@@ -577,18 +656,14 @@ void dji_init_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 	k_timer_stop(&dji_miss_handle_timer);
-	struct device *can_dev = NULL;
-	for (int i = 0; i < CAN_COUNT; i++) {
-		k_sem_init(&ctrl_structs[i].tx_queue_sem, 3, 3); // 初始化信号量
-
-		can_dev = (struct device *)ctrl_structs[i].can_dev;
-		can_start(can_dev);
-	}
-	for (int i = 0; i < MOTOR_COUNT; i++) {
+	for (int i = 0; i < DJI_MOTOR_COUNT; i++) {
 		if (motor_devices[i]) {
 			const struct dji_motor_config *cfg = motor_devices[i]->config;
 			struct can_filter filter = {
-				.id = cfg->common.rx_id, .mask = 0x3FF, .flags = 0};
+				.id = cfg->common.rx_id,
+				.mask = 0x7FF,
+				.flags = 0,
+			};
 			int err = can_add_rx_filter(cfg->common.phy, can_rx_callback,
 						    (void *)motor_devices[i], &filter);
 			if (err < 0) {
@@ -608,7 +683,7 @@ void dji_tx_handler(struct k_work *work)
 		return;
 	}
 
-	for (int i = 0; i < 5; i++) { // For each frame
+	for (int i = 0; i < CAN_TX_ID_CNT; i++) { // For each frame
 		if (ctrl_struct->full[i]) {
 			ctrl_struct->full[i] = false;
 
@@ -624,7 +699,10 @@ void dji_tx_handler(struct k_work *work)
 				const struct device *dev = ctrl_struct->motor_devs[id_temp];
 				struct dji_motor_data *data = dev->data;
 				if (id_temp < 8 && data->online) {
-					motor_calc(ctrl_struct->motor_devs[id_temp]);
+					if (!data->calculated) {
+						motor_calc(ctrl_struct->motor_devs[id_temp]);
+						data->calculated = true;
+					}
 					can_pack_add(frame_data, ctrl_struct->motor_devs[id_temp],
 						     j);
 					packed = true;
@@ -634,16 +712,9 @@ void dji_tx_handler(struct k_work *work)
 				txframe.id = index_to_frameID(i);
 				txframe.dlc = 8;
 				txframe.flags = 0;
-				memcpy(txframe.data, frame_data, sizeof(frame_data));
+				memcpy(txframe.data, frame_data, sizeof(txframe.data));
 				const struct device *can_dev = ctrl_struct->can_dev;
-				int err = k_sem_take(&ctrl_struct->tx_queue_sem, K_NO_WAIT);
-				if (err == 0) {
-					err = can_send(can_dev, &txframe, K_NO_WAIT,
-						       can_tx_callback, &ctrl_struct->tx_queue_sem);
-				}
-				if (err != 0 && err != -EAGAIN && err != -EBUSY) {
-					LOG_ERR("Error sending CAN frame (err %d)", err);
-				}
+				can_send_queued(can_dev, &txframe);
 			}
 		}
 	}

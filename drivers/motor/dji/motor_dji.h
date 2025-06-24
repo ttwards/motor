@@ -18,6 +18,8 @@
 #include <zephyr/drivers/motor.h>
 #include <zephyr/drivers/pid.h>
 
+#define CAN_TX_ID_CNT 8
+
 /*  canbus_id_t specifies the ID of the CAN bus the motor is on
 	which is defined in motor_devices[] */
 typedef uint8_t canbus_id_t;
@@ -34,25 +36,22 @@ typedef uint16_t motor_id_t;
 struct k_work_q dji_work_queue;
 
 struct motor_controller {
-	const struct device *can_dev;
+	struct device *can_dev;
 
 	/*
 	  There are 4 tx addresses
 	  0x1FF, 0x200 for M3508/M2006
 	  0x1FE, 0x2FE for GM6020 Current control.
-	  !!!! Voltage control for GM6020 is deprecated !!!!
-	  The 5 nums in full[] are: 0x200, 0x1FF, 0x1FE, 0x2FE, 0x2FF
+	  The 5 nums in full[] are: 0x200, 0x1FF, 0x1FE, 0x2FE, 0x2FF, 0x300
       */
 	int rx_ids[8];
-	bool full[5];
-	int8_t mapping[5][4];
+	bool full[CAN_TX_ID_CNT];
+	int8_t mapping[CAN_TX_ID_CNT][4];
 	uint8_t flags;
-	uint8_t mask[5];
+	uint8_t mask[CAN_TX_ID_CNT];
 	struct device *motor_devs[8];
 
 	struct k_work full_handle;
-
-	struct k_sem tx_queue_sem;
 };
 
 struct dji_motor_data {
@@ -71,7 +70,7 @@ struct dji_motor_data {
 	int16_t RAWcurrent;
 	int16_t RAWrpm;
 	int8_t RAWtemp;
-	float angle_add;
+	int32_t angle_add;
 
 	uint32_t curr_time;
 	uint32_t prev_time;
@@ -84,13 +83,13 @@ struct dji_motor_data {
 
 	struct k_spinlock data_input_lock;
 
-	bool minorArc;
-
 	// Target
 	float target_angle;
 	float target_rpm;
 	float target_torque;
 	float target_current;
+	bool calculated;
+	bool new_data;
 };
 
 struct dji_motor_config {
@@ -100,24 +99,19 @@ struct dji_motor_config {
 	bool is_gm6020;
 	bool is_m3508;
 	bool is_m2006;
+	bool is_dm_motor;
+	float dm_i_max;
+	float dm_torque_ratio;
+	const struct device *follow;
 };
 
 // 全局变量声明
 extern struct motor_controller ctrl_structs[];
 
-// 函数声明
-static void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void *user_data);
+int dji_set_mode(const struct device *dev, enum motor_mode mode);
 
-void dji_speed_limit(const struct device *dev, float max_speed, float min_speed);
-void dji_torque_limit(const struct device *dev, float max_torque, float min_torque);
-int dji_set_speed(const struct device *dev, float speed_rpm);
-int dji_set_angle(const struct device *dev, float angle);
-int dji_set_torque(const struct device *dev, float torque);
-float dji_set_zero(const struct device *dev);
-
-float dji_get_angle(const struct device *dev);
-float dji_get_speed(const struct device *dev);
-float dji_get_torque(const struct device *dev);
+int dji_get(const struct device *dev, motor_status_t *status);
+int dji_set(const struct device *dev, motor_status_t *status);
 int dji_init(const struct device *dev);
 
 void dji_control(const struct device *dev, enum motor_cmd cmd);
@@ -138,15 +132,9 @@ K_WORK_DEFINE(dji_init_handle, dji_init_handler);
 K_TIMER_DEFINE(dji_miss_handle_timer, NULL, NULL);
 
 static const struct motor_driver_api motor_api_funcs = {
-	.motor_get_speed = dji_get_speed,
-	.motor_get_torque = dji_get_torque,
-	.motor_get_angle = dji_get_angle,
-	.motor_set_speed = dji_set_speed,
-	.motor_set_torque = dji_set_torque,
-	.motor_set_angle = dji_set_angle,
+	.motor_get = dji_get,
+	.motor_set = dji_set,
 	.motor_control = dji_control,
-	.motor_limit_speed = dji_speed_limit,
-	.motor_limit_torque = dji_torque_limit,
 };
 
 extern const struct device *can_devices[];
