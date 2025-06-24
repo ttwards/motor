@@ -21,6 +21,9 @@ static struct k_timer aresplot_uart_timer;
 #define ARESPLOT_UART_STACK_SIZE 1536
 #define ARESPLOT_UART_PRIORITY   7
 
+uint8_t aresplot_parse_buf[BUF_SIZE];
+bool new_packet = false;
+
 static K_THREAD_STACK_DEFINE(aresplot_stack_area, ARESPLOT_UART_STACK_SIZE);
 // --- 用户需要实现的硬件/系统相关回调函数 ---
 // --- User-implemented hardware/system-specific callback functions ---
@@ -42,7 +45,7 @@ void aresplot_user_send_packet(const uint8_t *data, uint16_t length)
 {
 	struct device *uart_dev = aresplot_instance.uart_dev;
 	int err = uart_tx(uart_dev, data, length, SYS_FOREVER_US);
-	// LOG_HEXDUMP_INF(data, length, "Packet");
+	LOG_HEXDUMP_DBG(data, length, "Packet");
 	if (err && !freq_too_high) {
 		LOG_ERR("Failed to send packet: %d, is the frequency too high?", err);
 		freq_too_high = true;
@@ -75,10 +78,9 @@ static void aresplot_uart_callback(const struct device *dev, struct uart_event *
 	case UART_RX_RDY: {
 		uint8_t *p = &(evt->data.rx.buf[evt->data.rx.offset]);
 		uint16_t len = evt->data.rx.len;
-
+		memcpy(aresplot_parse_buf, p, len);
 		LOG_DBG("Received %d bytes", len);
-		aresplot_rx_feed_packet(p, len);
-
+		new_packet = true;
 		break;
 	}
 
@@ -143,11 +145,15 @@ static void aresplot_uart_callback(const struct device *dev, struct uart_event *
 static void aresplot_tick(void *arg1, void *arg2, void *arg3)
 {
 	while (!k_sem_take(&aresplot_sem, K_FOREVER)) {
+		if (new_packet) {
+			aresplot_rx_feed_packet(aresplot_parse_buf, BUF_SIZE);
+			new_packet = false;
+		}
 		aresplot_service_tick();
 	}
 }
 
-static void aresplot_uart_init(void)
+static int aresplot_uart_init(void)
 {
 	const struct device *uart_dev = DEVICE_DT_GET(DT_ALIAS(plot));
 	uint16_t freq = CONFIG_PLOTTER_FREQ;
@@ -156,7 +162,7 @@ static void aresplot_uart_init(void)
 
 	if (!device_is_ready(uart_dev)) {
 		LOG_ERR("UART device not ready");
-		return;
+		return -ENODEV;
 	}
 
 	aresplot_instance.uart_dev = (struct device *)uart_dev;
@@ -172,21 +178,21 @@ static void aresplot_uart_init(void)
 	err = uart_configure(uart_dev, &config);
 	if (err) {
 		LOG_ERR("Failed to configure UART: %d", err);
-		return;
+		return err;
 	}
 
 	// 设置回调
 	err = uart_callback_set(uart_dev, aresplot_uart_callback, &aresplot_instance);
 	if (err) {
 		LOG_ERR("Failed to set callback: %d", err);
-		return;
+		return err;
 	}
 
 	// 分配并启用接收缓冲区
 	err = k_mem_slab_alloc(&aresplot_uart_slab, (void **)&buf, K_NO_WAIT);
 	if (err) {
 		LOG_ERR("Failed to allocate RX buffer: %d", err);
-		return;
+		return err;
 	}
 
 	uart_rx_disable(uart_dev);
@@ -195,7 +201,7 @@ static void aresplot_uart_init(void)
 	if (err) {
 		LOG_ERR("Failed to enable RX: %d", err);
 		k_mem_slab_free(&aresplot_uart_slab, (void **)&buf);
-		return;
+		return err;
 	}
 
 	// 初始化协议
@@ -211,6 +217,7 @@ static void aresplot_uart_init(void)
 	k_timer_start(&aresplot_uart_timer, K_NO_WAIT, K_USEC(1e6 / aresplot_instance.freq));
 
 	LOG_INF("Aresplot UART initialized");
+	return 0;
 }
 
 void aresplot_user_critical_enter(void)
@@ -223,4 +230,4 @@ void aresplot_user_critical_exit(void)
 	return;
 }
 
-SYS_INIT(aresplot_uart_init, POST_KERNEL, CONFIG_APPLICATION_INIT_PRIORITY);
+SYS_INIT(aresplot_uart_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
