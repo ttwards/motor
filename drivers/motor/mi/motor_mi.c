@@ -2,6 +2,7 @@
 #include "zephyr/device.h"
 #include "zephyr/drivers/can.h"
 #include "../common/common.h"
+#include "zephyr/drivers/motor.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -86,6 +87,8 @@ void mi_motor_control(const struct device *dev, enum motor_cmd cmd)
 	case SET_ZERO:
 		mi_can_id->mi_msg_mode = Communication_Type_SetPosZero;
 		frame.data[0] = 0x01;
+		data->delta_deg_sum = 0;
+		data->common.angle = 0;
 		can_send_queued(cfg->common.phy, &frame);
 		break;
 
@@ -305,13 +308,6 @@ void mi_rx_data_handler(struct k_work *work)
 			uint16_to_float(data->RAWtorque, (double)T_MIN, (double)T_MAX, 16);
 		data->common.temperature = ((float)(data->RAWtemp)) / 10;
 		data->delta_deg_sum += data->common.angle - prev_angle;
-		if (data->delta_deg_sum > 360) {
-			data->common.round_cnt++;
-			data->delta_deg_sum -= 360.0f;
-		} else if (data->delta_deg_sum < -360) {
-			data->common.round_cnt--;
-			data->delta_deg_sum += 360.0f;
-		}
 
 		data->update = false;
 	}
@@ -401,6 +397,8 @@ void mi_init_handler(struct k_work *work)
 	for (int i = 0; i < MOTOR_COUNT; i++) {
 		mi_motor_control(motor_devices[i], ENABLE_MOTOR);
 		k_sleep(K_MSEC(2));
+		mi_motor_control(motor_devices[i], SET_ZERO);
+		k_sleep(K_MSEC(2));
 	}
 
 	k_timer_start(&mi_tx_timer, K_NO_WAIT, K_MSEC(2));
@@ -416,7 +414,7 @@ int mi_get(const struct device *dev, motor_status_t *status)
 	status->torque = data->common.torque;
 	status->temperature = data->common.temperature;
 	status->mode = data->common.mode;
-	status->round_cnt = data->common.round_cnt;
+	status->sum_angle = data->delta_deg_sum;
 	status->speed_limit[0] = V_MAX;
 	status->speed_limit[1] = V_MIN;
 	status->torque_limit[0] = T_MAX;

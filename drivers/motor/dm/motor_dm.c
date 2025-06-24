@@ -173,7 +173,7 @@ int dm_get(const struct device *dev, motor_status_t *status)
 	status->torque = data->common.torque;
 
 	status->mode = data->common.mode;
-	status->round_cnt = (int)(data->common.angle / 360.0f);
+	status->sum_angle = data->delta_deg_sum;
 	status->speed_limit[0] = cfg->v_max;
 	status->speed_limit[1] = cfg->v_max;
 	status->torque_limit[0] = cfg->t_max;
@@ -302,13 +302,6 @@ void dm_rx_data_handler(struct k_work *work)
 		data->common.torque = uint_to_float(data->RAWtorque, -cfg->t_max, cfg->t_max, 12);
 
 		data->delta_deg_sum += data->common.angle - prev_angle;
-		if (data->delta_deg_sum > 360) {
-			data->common.round_cnt++;
-			data->delta_deg_sum -= 360.0f;
-		} else if (data->delta_deg_sum < -360) {
-			data->common.round_cnt--;
-			data->delta_deg_sum += 360.0f;
-		}
 
 		data->update = false;
 	}
@@ -337,15 +330,20 @@ void dm_tx_data_handler(struct k_work *work)
 		struct dm_motor_data *data = motor_devices[i]->data;
 		const struct dm_motor_config *cfg = motor_devices[i]->config;
 
-		dm_motor_pack(motor_devices[i], &tx_frame);
-		can_send_queued(cfg->common.phy, &tx_frame);
+		if (now - data->last_tx_time >= 1000 / cfg->freq) {
+			dm_motor_pack(motor_devices[i], &tx_frame);
+			can_send_queued(cfg->common.phy, &tx_frame);
+			data->last_tx_time = now;
+		}
 
-		if (data->online && now - data->prev_recv_time <= 5 && data->enable) {
+		if (data->online && now - data->prev_recv_time <= 5000 / cfg->freq &&
+		    data->enable) {
 			if (data->err > 1) {
 				dm_control(motor_devices[i], CLEAR_ERROR);
 			}
 		}
-		if (now - data->prev_recv_time > 150 && data->online && data->enable) {
+		if (now - data->prev_recv_time > 150000 / cfg->freq && data->online &&
+		    data->enable) {
 			LOG_ERR("motor %s is not responding, setting it to offline",
 				motor_devices[i]->name);
 			data->online = false;

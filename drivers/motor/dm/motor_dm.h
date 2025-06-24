@@ -66,12 +66,15 @@ struct dm_motor_data {
 	int16_t RAWtorque;
 
 	struct pid_config params;
+
+	uint64_t last_tx_time;
 };
 
 struct dm_motor_config {
 	struct motor_driver_config common;
 
 	float gear_ratio;
+	int freq;
 
 	float v_max;
 	float p_max;
@@ -138,6 +141,7 @@ K_TIMER_DEFINE(dm_tx_timer, dm_tx_isr_handler, NULL);
 		.v_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), v_max, 12.5),             \
 		.p_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), p_max, 20),               \
 		.t_max = (float)DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), t_max, 200),              \
+		.freq = (float)DT_PROP_OR(DT_DRV_INST(inst), freq, 500),                           \
 	};
 
 #define MOTOR_DEVICE_DT_DEFINE(node_id, init_fn, pm, data, config, level, prio, api, ...)          \

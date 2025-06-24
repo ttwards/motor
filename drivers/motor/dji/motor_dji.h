@@ -18,6 +18,8 @@
 #include <zephyr/drivers/motor.h>
 #include <zephyr/drivers/pid.h>
 
+#define CAN_TX_ID_CNT 8
+
 /*  canbus_id_t specifies the ID of the CAN bus the motor is on
 	which is defined in motor_devices[] */
 typedef uint8_t canbus_id_t;
@@ -40,14 +42,13 @@ struct motor_controller {
 	  There are 4 tx addresses
 	  0x1FF, 0x200 for M3508/M2006
 	  0x1FE, 0x2FE for GM6020 Current control.
-	  !!!! Voltage control for GM6020 is deprecated !!!!
-	  The 5 nums in full[] are: 0x200, 0x1FF, 0x1FE, 0x2FE, 0x2FF
+	  The 5 nums in full[] are: 0x200, 0x1FF, 0x1FE, 0x2FE, 0x2FF, 0x300
       */
 	int rx_ids[8];
-	bool full[5];
-	int8_t mapping[5][4];
+	bool full[CAN_TX_ID_CNT];
+	int8_t mapping[CAN_TX_ID_CNT][4];
 	uint8_t flags;
-	uint8_t mask[5];
+	uint8_t mask[CAN_TX_ID_CNT];
 	struct device *motor_devs[8];
 
 	struct k_work full_handle;
@@ -69,7 +70,7 @@ struct dji_motor_data {
 	int16_t RAWcurrent;
 	int16_t RAWrpm;
 	int8_t RAWtemp;
-	float angle_add;
+	int32_t angle_add;
 
 	uint32_t curr_time;
 	uint32_t prev_time;
@@ -82,13 +83,13 @@ struct dji_motor_data {
 
 	struct k_spinlock data_input_lock;
 
-	bool minorArc;
-
 	// Target
 	float target_angle;
 	float target_rpm;
 	float target_torque;
 	float target_current;
+	bool calculated;
+	bool new_data;
 };
 
 struct dji_motor_config {
@@ -98,6 +99,10 @@ struct dji_motor_config {
 	bool is_gm6020;
 	bool is_m3508;
 	bool is_m2006;
+	bool is_dm_motor;
+	float dm_i_max;
+	float dm_torque_ratio;
+	const struct device *follow;
 };
 
 // 全局变量声明
