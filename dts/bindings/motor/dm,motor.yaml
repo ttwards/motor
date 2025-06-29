@@ -32,3 +32,5 @@ properties:
     type: string
   t_max:
     type: string
+  freq:
+    type: int
