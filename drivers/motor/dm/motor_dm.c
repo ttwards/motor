@@ -149,7 +149,6 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 		pbuf = (uint8_t *)&data->target_angle;
 		vbuf = (uint8_t *)&data->target_radps;
 
-		frame->data[0] = *pbuf;
 		memcpy(frame->data, pbuf, 4);
 		memcpy(frame->data + 4, vbuf, 4);
 		break;
@@ -203,7 +202,25 @@ static void dm_rx_handler(const struct device *can_dev, struct can_frame *frame,
 	k_work_submit_to_queue(&dm_work_queue, &dm_rx_data_handle);
 }
 
-int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
+static void dm_edit_reg_value(const struct device *dev, uint16_t can_id, uint8_t reg_addr,
+			      uint32_t reg_value)
+{
+	struct can_frame frame;
+	frame.id = 0x7FF;
+	frame.dlc = 8;
+	frame.flags = 0;
+	frame.data[CANID_L] = can_id & 0xFF;
+	frame.data[CANID_H] = can_id >> 8;
+	frame.data[2] = 0x55;
+	frame.data[RID] = reg_addr;
+	frame.data[4] = reg_value & 0xFF;
+	frame.data[5] = reg_value >> 8;
+	frame.data[6] = reg_value >> 16;
+	frame.data[7] = reg_value >> 24;
+	can_send_queued(dev, &frame);
+}
+
+void dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 {
 	struct dm_motor_data *data = dev->data;
 	const struct dm_motor_config *cfg = dev->config;
@@ -215,19 +232,26 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 	case MIT:
 		strcpy(mode_str, "mit");
 		data->tx_offset = 0x0;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x01);
 		break;
 	case PV:
 		strcpy(mode_str, "pv");
 		data->tx_offset = 0x100;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x02);
 		break;
 	case VO:
 		strcpy(mode_str, "vo");
 		data->tx_offset = 0x200;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x03);
+		break;
+	case HYBRID:
+		strcpy(mode_str, "hybrid");
+		data->tx_offset = 0x300;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x04);
 		break;
 	default:
 		data->online = false;
 		dm_control(dev, DISABLE_MOTOR);
-		return -ENOSYS;
 	}
 
 	if (mode != VO) {
@@ -251,11 +275,8 @@ int dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 			LOG_ERR("Mode %s not found", mode_str);
 			dm_control(dev, DISABLE_MOTOR);
 			data->enable = false;
-			return -ENOSYS;
 		}
 	}
-
-	return 0;
 }
 
 int dm_set(const struct device *dev, motor_status_t *status)
@@ -281,7 +302,7 @@ int dm_set(const struct device *dev, motor_status_t *status)
 		return -ENOSYS;
 	}
 
-	return dm_motor_set_mode(dev, status->mode);
+	return 0;
 }
 
 void dm_rx_data_handler(struct k_work *work)
@@ -342,7 +363,7 @@ void dm_tx_data_handler(struct k_work *work)
 				dm_control(motor_devices[i], CLEAR_ERROR);
 			}
 		}
-		if (now - data->prev_recv_time > 150000 / cfg->freq && data->online &&
+		if (now - data->prev_recv_time > 250000 / cfg->freq && data->online &&
 		    data->enable) {
 			LOG_ERR("motor %s is not responding, setting it to offline",
 				motor_devices[i]->name);

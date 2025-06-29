@@ -47,46 +47,44 @@ extern "C" {
 	motor_set(dev, &(motor_status_t){.torque = _torque, .mode = ML_TORQUE})
 #define motor_set_speed(dev, _speed)                                                               \
 	motor_set(dev, &(motor_status_t){.rpm = _speed, .mode = ML_SPEED})
-#define motor_set_mode(dev, _mode) motor_set(dev, &(motor_status_t){.mode = _mode})
 #define motor_set_mit(dev, _speed, _angle, _torque)                                                \
-	motor_set(dev,                                                                             \
-		  &(motor_status_t){                                                               \
-			  .speed = _speed, .angle = _angle, .torque = _torque, .mode = ML_MIT})
+	motor_set(dev, &(motor_status_t){                                                          \
+			       .rpm = _speed, .angle = _angle, .torque = _torque, .mode = MIT})
 #define motor_set_speed_limit(dev, _min, _max)                                                     \
 	motor_set(dev, &(motor_status_t){.speed_limit = {_min, _max}})
 #define motor_set_torque_limit(dev, _min, _max)                                                    \
 	motor_set(dev, &(motor_status_t){.torque_limit = {_min, _max}})
 
 #define motor_get_angle(dev)                                                                       \
-	{                                                                                          \
+	({                                                                                         \
 		motor_status_t status;                                                             \
 		motor_get(dev, &status);                                                           \
-		return status.angle;                                                               \
-	}
+		status.angle;                                                                      \
+	})
 #define motor_get_rpm(dev)                                                                         \
-	{                                                                                          \
+	({                                                                                         \
 		motor_status_t status;                                                             \
 		motor_get(dev, &status);                                                           \
-		return status.rpm;                                                                 \
-	}
+		status.rpm;                                                                        \
+	})
 #define motor_get_torque(dev)                                                                      \
-	{                                                                                          \
+	({                                                                                         \
 		motor_status_t status;                                                             \
 		motor_get(dev, &status);                                                           \
-		return status.torque;                                                              \
-	}
+		status.torque;                                                                     \
+	})
 #define motor_get_speed(dev)                                                                       \
-	{                                                                                          \
+	({                                                                                         \
 		motor_status_t status;                                                             \
 		motor_get(dev, &status);                                                           \
-		return status.speed;                                                               \
-	}
+		status.rpm;                                                                        \
+	})
 #define motor_get_mode(dev)                                                                        \
-	{                                                                                          \
+	({                                                                                         \
 		motor_status_t status;                                                             \
 		motor_get(dev, &status);                                                           \
-		return status.mode;                                                                \
-	}
+		status.mode;                                                                       \
+	})
 
 /**
  * @brief 电机工作模式枚举
@@ -103,6 +101,7 @@ enum motor_mode {
 	ML_TORQUE = 3,
 	ML_ANGLE = 4,
 	ML_SPEED = 5,
+	HYBRID = 6,
 };
 
 /**
@@ -137,7 +136,7 @@ struct motor_driver_data {
 	float rpm;
 	float torque;
 	float temperature; /* Cannot be set in target */
-	int round_cnt;
+	float sum_angle;
 
 	float speed_limit[2];
 	float torque_limit[2];
@@ -167,6 +166,16 @@ typedef int (*motor_api_stat_t)(const struct device *dev, motor_status_t *status
 typedef int (*motor_api_set_t)(const struct device *dev, motor_status_t *status);
 
 /**
+ * @typedef motor_api_set_mode_t
+ * @brief 设置电机模式
+ *
+ * @param dev 指向电机设备的指针
+ * @param mode 电机模式
+ * @return void
+ */
+typedef void (*motor_api_set_mode_t)(const struct device *dev, enum motor_mode mode);
+
+/**
  * @typedef motor_api_ctrl_t
  * @brief 电机控制命令
  *
@@ -183,6 +192,7 @@ __subsystem struct motor_driver_api {
 	motor_api_ctrl_t motor_control;
 	motor_api_set_t motor_set;
 	motor_api_stat_t motor_get;
+	motor_api_set_mode_t motor_set_mode;
 };
 
 /**
@@ -238,6 +248,24 @@ static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd
 	api->motor_control(dev, cmd);
 }
 
+/**
+ * @brief 设置电机模式
+ *
+ * @param dev 电机设备指针
+ * @param mode 电机模式
+ * @return void
+ */
+__syscall void motor_set_mode(const struct device *dev, enum motor_mode mode);
+
+static inline void z_impl_motor_set_mode(const struct device *dev, enum motor_mode mode)
+{
+	const struct motor_driver_api *api = (const struct motor_driver_api *)dev->api;
+	if (api->motor_set_mode == NULL) {
+		return;
+	}
+	api->motor_set_mode(dev, mode);
+}
+
 #define DT_GET_CANPHY(node_id) DEVICE_DT_GET(DT_PHANDLE(node_id, can_channel))
 
 #define NEW_PID_INSTANCE_STRUCT(node_id, prop, idx)                                                \
@@ -266,7 +294,7 @@ static inline void z_impl_motor_control(const struct device *dev, enum motor_cmd
 		.rpm = 0,                                                                          \
 		.torque = 0,                                                                       \
 		.temperature = 0,                                                                  \
-		.round_cnt = 0,                                                                    \
+		.sum_angle = 0,                                                                    \
 		.speed_limit = {-99999, 99999},                                                    \
 		.torque_limit = {-99999, 99999},                                                   \
 		.mode = MIT,                                                                       \

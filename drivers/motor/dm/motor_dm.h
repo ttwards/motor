@@ -27,6 +27,10 @@
 #define RAD2ROUND 1.0f / (2 * PI)
 #define RAD2DEG   180.0f / PI
 
+#define CANID_L 0u
+#define CANID_H 1u
+#define RID     3u
+
 static const uint8_t enable_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC};
 static const uint8_t disable_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD};
 static const uint8_t set_zero_frame[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE};
@@ -87,6 +91,7 @@ struct k_work_q dm_work_queue;
 int dm_set(const struct device *dev, motor_status_t *status);
 void dm_control(const struct device *dev, enum motor_cmd cmd);
 int dm_get(const struct device *dev, motor_status_t *status);
+void dm_motor_set_mode(const struct device *dev, enum motor_mode mode);
 
 void dm_rx_data_handler(struct k_work *work);
 
@@ -99,6 +104,7 @@ void dm_init_handler(struct k_work *work);
 static const struct motor_driver_api motor_api_funcs = {
 	.motor_get = dm_get,
 	.motor_set = dm_set,
+	.motor_set_mode = dm_motor_set_mode,
 	.motor_control = dm_control,
 };
 
