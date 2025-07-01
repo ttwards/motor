@@ -9,7 +9,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/chassis.h>
 #include <zephyr/drivers/pid.h>
-#include "zephyr/drivers/wheel.h"
+#include <zephyr/drivers/wheel.h>
 #include <zephyr/logging/log.h>
 #include "chassis.h"
 #include "zephyr/kernel.h"
@@ -31,11 +31,9 @@ LOG_MODULE_REGISTER(chassis, CONFIG_MOTOR_LOG_LEVEL);
 #endif
 
 void chassis_timer_cb(struct k_timer *timer);
-void chassis_thread(void *arg1, void *arg2, void *arg3);
 
-k_tid_t chassis_tid;
-struct k_thread chassis_thread_data;
-K_THREAD_STACK_DEFINE(chassis_stack_area, CHASSIS_STACK_SIZE);
+// struct k_thread chassis_thread_data;
+// K_THREAD_STACK_DEFINE(chassis_stack_area, CHASSIS_STACK_SIZE);
 
 K_TIMER_DEFINE(chassis_timer, chassis_timer_cb, NULL);
 
@@ -54,14 +52,14 @@ int cchassis_init(const struct device *dev)
 			     &data->distance_to_center[idx]);
 		idx++;
 	}
-	data->currTime = k_uptime_get_32();
+	data->currTime = k_cycle_get_32();
 	data->prevTime = data->currTime;
 
-	k_thread_create(&chassis_thread_data, chassis_stack_area,
-			K_THREAD_STACK_SIZEOF(chassis_stack_area), chassis_thread, (void *)dev,
-			NULL, NULL, K_HIGHEST_THREAD_PRIO, 0, K_NO_WAIT);
+	// k_thread_create(&chassis_thread_data, chassis_stack_area,
+	// 		K_THREAD_STACK_SIZEOF(chassis_stack_area), chassis_thread, (void *)dev,
+	// 		NULL, NULL, -2, 0, K_NO_WAIT);
 	k_timer_user_data_set(&chassis_timer, (void *)dev);
-	k_timer_start(&chassis_timer, K_MSEC(100), K_MSEC(2));
+	k_timer_start(&chassis_timer, K_MSEC(100), K_MSEC(1));
 	return 0;
 }
 
@@ -96,8 +94,7 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 {
 	// data->targetRollSpeed = 0;
 
-	int idx = 0;
-	while (cfg->wheels[idx] != NULL) {
+	for (int idx = 0; idx < CHASSIS_WHEEL_COUNT; idx++) {
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->set_status.gyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->set_status.gyro;
 		float speedX, speedY;
@@ -123,14 +120,11 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		if (fabsf(steerwheel_speed) > 0.1f || fabsf(data->set_status.gyro) > 0.15f) {
 			wheel_set_speed(cfg->wheels[idx], steerwheel_speed, steerwheel_angle);
 		} else {
-			int err = wheel_set_static(cfg->wheels[idx],
-						   data->angle_to_center[idx] + 90.0f);
+			int err = wheel_set_static(cfg->wheels[idx], data->angle_to_center[idx]);
 			if (err < 0) {
-				wheel_set_speed(cfg->wheels[idx], 0,
-						data->angle_to_center[idx] + 90.0f);
+				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
 			}
 		}
-
 		idx++;
 	}
 }
@@ -145,10 +139,12 @@ void chassis_timer_cb(struct k_timer *timer)
 	}
 }
 
-void chassis_thread(void *arg1, void *arg2, void *arg3)
+void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 {
 	ARG_UNUSED(arg2);
 	ARG_UNUSED(arg3);
+
+	k_thread_name_set(k_current_get(), "chassis");
 
 	const struct device *dev = (const struct device *)arg1;
 	if (dev == NULL) {
@@ -174,7 +170,7 @@ void chassis_thread(void *arg1, void *arg2, void *arg3)
 		if ((data->chassis_sensor_data.accel[2] - 9.8f) > 0.4f) {
 			// We are in the air
 		}
-		float deltaTimeUs = k_cyc_to_us_near32(data->currTime - data->prevTime);
+		int32_t deltaTimeUs = k_cyc_to_us_floor32(data->currTime - data->prevTime);
 		float error = 0;
 
 		if (!isnan(data->chassis_sensor_data.Yaw) && data->angleControl) {
@@ -223,13 +219,12 @@ void chassis_thread(void *arg1, void *arg2, void *arg3)
 		float delta_speed =
 			sqrtf(delta_speed_X * delta_speed_X + delta_speed_Y * delta_speed_Y);
 		float delta_speed_angle = atan2f(delta_speed_Y, delta_speed_X);
-		delta_speed = delta_speed > (cfg->max_lin_accel * deltaTimeUs * 0.001f)
-				      ? (cfg->max_lin_accel * deltaTimeUs * 0.001f)
-			      : delta_speed < -(cfg->max_lin_accel * deltaTimeUs * 0.001f)
-				      ? -(cfg->max_lin_accel * deltaTimeUs * 0.001f)
+		delta_speed = (delta_speed > (cfg->max_lin_accel * deltaTimeUs) * 0.000001f)
+				      ? (cfg->max_lin_accel * deltaTimeUs) * 0.000001f
 				      : delta_speed;
 		data->set_status.speedX += delta_speed * cosf(delta_speed_angle);
 		data->set_status.speedY += delta_speed * sinf(delta_speed_angle);
+
 		// float currentSpeed = sqrtf(data->chassis_status.speedX *
 		// data->chassis_status.speedX +
 		//    data->chassis_status.speedY * data->chassis_status.speedY);
@@ -240,14 +235,17 @@ void chassis_thread(void *arg1, void *arg2, void *arg3)
 			data->set_status.gyro = pid_calc_in(cfg->angle_pid, error, deltaTimeUs);
 		}
 
-		data->set_status.gyro = data->target_status.gyro > cfg->max_gyro ? cfg->max_gyro
-					: data->target_status.gyro < -cfg->max_gyro
+		data->set_status.gyro = data->set_status.gyro > cfg->max_gyro ? cfg->max_gyro
+					: data->set_status.gyro < -cfg->max_gyro
 						? -cfg->max_gyro
-						: data->target_status.gyro;
+						: data->set_status.gyro;
 
 		cchassis_resolve(data, cfg);
 	}
 }
+
+K_THREAD_DEFINE(chassis_thread, CHASSIS_STACK_SIZE, chassis_thread_entry,
+		DEVICE_DT_GET(DT_DRV_INST(0)), NULL, NULL, 0, 0, 0);
 
 struct chassis_driver_api chassis_driver_api = {
 	.set_angle = cchassis_set_angle,

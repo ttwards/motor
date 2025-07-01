@@ -40,8 +40,7 @@
 		.pos_X_offset = WHEELS_FOREACH(inst, GET_WHEEL_X_OFFSET),                          \
 		.pos_Y_offset = WHEELS_FOREACH(inst, GET_WHEEL_Y_OFFSET),                          \
 		.max_gyro = DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), max_gyro, 10),                \
-		.max_lin_accel =                                                                   \
-			DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), max_linear_accel, 10) / 1000.0f,  \
+		.max_lin_accel = DT_STRING_UNQUOTED_OR(DT_DRV_INST(inst), max_linear_accel, 10),   \
 	};
 
 #define CHASSIS_DEFINE_INST(inst)                                                                  \
