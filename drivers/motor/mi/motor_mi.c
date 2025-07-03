@@ -253,7 +253,7 @@ static int get_motor_id(struct can_frame *frame)
 	return -1;
 }
 
-static struct can_filter filters[CONFIG_CAN_COUNT];
+static struct can_filter filters[MOTOR_COUNT];
 
 static void mi_can_rx_handler(const struct device *can_dev, struct can_frame *frame,
 			      void *user_data)
