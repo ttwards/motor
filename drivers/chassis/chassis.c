@@ -125,7 +125,6 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
 			}
 		}
-		idx++;
 	}
 }
 
