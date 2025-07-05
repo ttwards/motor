@@ -284,7 +284,7 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack)
 }
 
 sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t *buf, size_t len,
-			    usb_trans_cb_t cb)
+			    dual_trans_cb_t cb)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
 	if (data->sync_cnt >= MAX_PACK_COUNT) {
@@ -315,7 +315,7 @@ sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t 
 	return &data->sync_table[data->sync_cnt - 1];
 }
 
-void dual_func_add(struct AresProtocol *protocol, uint16_t header, usb_trans_func_t cb)
+void dual_func_add(struct AresProtocol *protocol, uint16_t header, dual_trans_func_t cb)
 {
 	if (cb == NULL) {
 		LOG_ERR("Callback function is NULL.");

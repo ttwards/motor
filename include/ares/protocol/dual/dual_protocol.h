@@ -33,8 +33,6 @@ int ares_dual_protocol_init(struct AresProtocol *protocol);
 		result;                                                                            \
 	})
 
-int ares_usb_transfer_init(void);
-
 #define SYNC_FRAME_HEAD          0x5A5A
 #define SYNC_HEAD_IDX            0
 #define SYNC_ID_IDX              2
@@ -84,9 +82,9 @@ int ares_usb_transfer_init(void);
 typedef struct id_mapping func_table_t;
 typedef struct sync_pack sync_table_t;
 
-typedef void (*usb_trans_cb_t)(int status);
+typedef void (*dual_trans_cb_t)(int status);
 
-typedef uint32_t (*usb_trans_func_t)(uint32_t arg1, uint32_t arg2, uint32_t arg3);
+typedef uint32_t (*dual_trans_func_t)(uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
 struct sync_pack {
 	uint16_t ID;
@@ -94,7 +92,7 @@ struct sync_pack {
 	uint8_t *data;
 	uint8_t request_id;
 	size_t len;
-	usb_trans_cb_t cb;
+	dual_trans_cb_t cb;
 	uint8_t *buf;
 
 	struct k_mutex mutex;
@@ -102,7 +100,7 @@ struct sync_pack {
 
 struct id_mapping {
 	uint16_t id;
-	usb_trans_func_t cb;
+	dual_trans_func_t cb;
 	uint32_t arg1;
 	uint32_t arg2;
 	uint32_t arg3;
@@ -134,17 +132,35 @@ struct dual_protocol_data {
 	__aligned(4) uint8_t error_frame_buf[ERROR_FRAME_LENGTH];
 };
 
-void dual_func_add(struct AresProtocol *protocol, uint16_t header, usb_trans_func_t cb);
+void dual_func_add(struct AresProtocol *protocol, uint16_t header, dual_trans_func_t cb);
 
 void dual_func_remove(struct AresProtocol *protocol, uint16_t header);
 
 sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t *buf, size_t len,
-			    usb_trans_cb_t cb);
+			    dual_trans_cb_t cb);
 
 int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack);
 
-void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void *arg2,
-		    void *arg3, usb_trans_cb_t cb);
+void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void *arg2, void *arg3,
+		    dual_trans_cb_t cb);
+
+// Convert uint32_t back to float (C compatible)
+#define TO_FLOAT(x)                                                                                \
+	({                                                                                         \
+		uint32_t temp = (x);                                                               \
+		float result;                                                                      \
+		memcpy(&result, &temp, sizeof(result));                                            \
+		result;                                                                            \
+	})
+
+// Convert uint32_t back to double
+#define TO_DOUBLE(x)                                                                               \
+	({                                                                                         \
+		uint32_t temp = (x);                                                               \
+		double result;                                                                     \
+		memcpy(&result, &temp, sizeof(result));                                            \
+		result;                                                                            \
+	})
 
 #define DUAL_PROPOSE_PROTOCOL_DEFINE(Protocol_name)                                                \
 	struct AresProtocolAPI Protocol_name##_api = {                                             \
