@@ -1,0 +1,6 @@
+/ {
+
+};
+&cdc_acm_uart0 {
+	status = "disabled";
+};
