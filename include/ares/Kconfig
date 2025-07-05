@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 rsource "connectivity/Kconfig"
+rsource "interface/Kconfig"
+rsource "protocol/Kconfig"
 
 menuconfig ARES
     bool "ARES options"
@@ -79,3 +81,8 @@ config PLOTTER_FREQ
 	default 300
 	help
 	  Set PLOTTER_FREQ
+
+config ARES_COMM_LIB
+	bool "ARES_COMM"
+	help
+	  Enable ARES_COMM_LIB
