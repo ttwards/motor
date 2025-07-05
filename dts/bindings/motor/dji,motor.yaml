@@ -39,3 +39,15 @@ properties:
   is_gm6020:
     type: boolean
     required: false
+  is_dm_motor:
+    type: boolean
+    required: false
+  dm_i_max:
+    type: string
+    required: false
+  dm_torque_ratio:
+    type: string
+    required: false
+  follow:
+    type: phandle
+    required: false
