@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_DUAL_PROPOSE_PROTOCOL dual)

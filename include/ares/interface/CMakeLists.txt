@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_USB_BULK_INTERFACE usb)

@@ -1,0 +1,19 @@
+# Kconfig for ARES Custom USB Application
+
+# 顶层菜单，用于组织所有应用相关的配置
+menu "ARES Custom USB Application"
+
+config ARES_USB_BULK_LOG_LEVEL
+	int "Log level for ARES USB Bulk driver"
+	default 3
+	help
+	  Select the log level for the ARES USB Bulk driver.
+	  0=OFF, 1=ERR, 2=WRN, 3=INF, 4=DBG
+
+config ARES_USB_THREAD_STACK_SIZE
+    int "Stack size for ARES USB processing thread"
+    default 1024
+    help
+      Specifies the stack size for the thread that processes incoming USB data.
+
+endmenu # ARES Custom USB Application
