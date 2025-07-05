@@ -1,7 +1,7 @@
 #ifndef ARES_COMM_H__
 #define ARES_COMM_H__
 
-#include <ares/protocol/ares_protocol.h>
+#include <ares/protocol/dual/dual_protocol.h>
 #include <ares/interface/usb/usb_bulk.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net_buf.h>
