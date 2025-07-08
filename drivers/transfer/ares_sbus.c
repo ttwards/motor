@@ -110,7 +110,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 		uint16_t len = evt->data.rx.len;
 
 		uint8_t *ptr_offset = p + find_begin(p, len);
-		if (ptr_offset >= p && ptr_offset + 25 < p + len) {
+		if (ptr_offset >= p && ptr_offset + 25 <= p + len) {
 			memcpy(data->data, ptr_offset, 25);
 		} else {
 			return;
