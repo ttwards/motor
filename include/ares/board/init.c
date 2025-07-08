@@ -5,9 +5,7 @@
  */
 #include "zephyr/toolchain.h"
 #include <zephyr/drivers/pwm.h>
-#ifdef CONFIG_BOARD_DM_MC02
-#include <zephyr/drivers/led_strip.h>
-#endif
+
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/kernel.h>
@@ -18,11 +16,15 @@
 
 LOG_MODULE_REGISTER(board_init, CONFIG_BOARD_LOG_LEVEL);
 
+#ifdef CONFIG_BOARD_DM_MC02
+#include <zephyr/drivers/led_strip.h>
+#else
 struct led_rgb {
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
 };
+#endif
 
 #ifdef CONFIG_BOARD_DM_MC02
 #define XT30_1_NODE DT_NODELABEL(power1)
@@ -42,6 +44,8 @@ void pwr_init(void)
 
 #define PWR_INIT pwr_init();
 #define LED_INIT led_init();
+
+#define set_rgb_led_brightness(color)
 
 #endif /* CONFIG_BOARD_DM_MC02 */
 
@@ -151,23 +155,6 @@ int set_rgb_led_brightness(struct led_rgb *color)
 
 #define RGB(_r, _g, _b) ((struct led_rgb){.r = (_r), .g = (_g), .b = (_b)})
 
-void led_set_rgb(struct led_rgb *color)
-{
-#ifdef CONFIG_BOARD_DM_MC02
-	led_strip_update_rgb(strip, color, 1);
-
-#endif /* CONFIG_BOARD_DM_MC02 */
-
-#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_A
-	// led_set_brightness(led_green, 1, color->g);
-	// led_set_brightness(led_red, 1, color->r);
-#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_A */
-
-#ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
-
-#endif /* CONFIG_BOARD_ROBOMASTER_BOARD_C */
-}
-
 void led_serivce_func(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1);
@@ -227,7 +214,7 @@ static struct k_thread led_service_thread;
 void led_init(void)
 {
 	struct led_rgb color = RGB(0x4F, 0x4F, 0x4F);
-	led_set_rgb(&color);
+	set_rgb_led_brightness(&color);
 	k_sleep(K_MSEC(300));
 
 #ifdef CONFIG_BOARD_ROBOMASTER_BOARD_C
