@@ -172,9 +172,7 @@ void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void
 		.heart_beat_timer = {0},                                                           \
 		.err_frame_mutex = {0},                                                            \
 		.func_cnt = 0,                                                                     \
-		.func_table = {0},                                                                 \
 		.sync_cnt = 0,                                                                     \
-		.sync_table = {0},                                                                 \
 		.func_tx_bckup_msgq = {0},                                                         \
 		.online = false,                                                                   \
 	};                                                                                         \

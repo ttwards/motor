@@ -51,7 +51,7 @@ static void error_handle(struct AresProtocol *protocol, uint16_t req_id, uint16_
 		return;
 	}
 	if (k_mutex_lock(&data->err_frame_mutex, K_NO_WAIT) != 0) {
-		LOG_ERR("Failed to lock error frame mutex.");
+		LOG_DBG("Failed to lock error frame mutex.");
 		return;
 	}
 	GET_16BITS(data->error_frame_buf, ERROR_HEAD_IDX) = ERROR_FRAME_HEAD;
@@ -183,6 +183,13 @@ static void parse_sync(struct AresProtocol *protocol, uint8_t *buf, size_t len)
 	sync_table_t *pack = find_pack(protocol->priv_data, ID);
 	if (pack == NULL) {
 		LOG_ERR("Cannot find corresponding ID from sync table.");
+		return;
+	}
+
+	if (pack->len + SYNC_FRAME_LENGTH_OFFSET != len) {
+		LOG_ERR("SYNC frame length mismatch: %d vs %d",
+			pack->len + SYNC_FRAME_LENGTH_OFFSET, len);
+		error_handle(protocol, pack->ID, UNKNOWN_TAIL);
 		return;
 	}
 
@@ -377,22 +384,8 @@ static void rx_frame_parser(struct AresProtocol *protocol, uint8_t *buf, uint8_t
 		parse_func(protocol, map);
 		break;
 	case SYNC_FRAME_HEAD:
-		for (int i = 0; i < data->sync_cnt; i++) {
-			if (data->sync_table[i].ID == GET_16BITS(buf, SYNC_ID_IDX)) {
-				if (data->sync_table[i].len + SYNC_FRAME_LENGTH_OFFSET != len) {
-					LOG_ERR("SYNC frame length mismatch: %d vs %d",
-						data->sync_table[i].len + SYNC_FRAME_LENGTH_OFFSET,
-						len);
-					error_handle(protocol, data->sync_table[i].ID,
-						     UNKNOWN_TAIL);
-					return;
-				}
-				parse_sync(protocol, buf, len);
-				break;
-			}
-		}
+		parse_sync(protocol, buf, len);
 		LOG_DBG("SYNC frame received: ID %x", GET_16BITS(buf, SYNC_ID_IDX));
-
 		break;
 	case ERROR_FRAME_HEAD:
 		if (len != ERROR_FRAME_LENGTH) {
