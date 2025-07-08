@@ -38,10 +38,10 @@ struct k_thread processing_thread_data;
 static struct AresInterface *ares_interface;
 
 /* Device and Endpoint definitions */
-#define ARES_USB_VID  0x1209 // Test VID
-#define ARES_USB_PID  0x0001 // Product PID
-#define BULK_EP_OUT_1 0x01   // OUT endpoint address
-#define BULK_EP_IN_1  0x81   // IN endpoint address
+#define ARES_USB_VID 0x1209 // Test VID
+#define ARES_USB_PID 0x0001 // Product PID
+#define BULK_EP_OUT  0x01   // OUT endpoint address
+#define BULK_EP_IN   0x81   // IN endpoint address
 
 /* State bits for the interface */
 #define ARES_IF_FUNCTION_ENABLED     0
@@ -71,7 +71,6 @@ USBD_CONFIGURATION_DEFINE(ares_hs_config, attributes, 250, &hs_cfg_desc);
 struct usbd_class_data *ares_if_class_data;
 
 struct ares_if_desc {
-	struct usb_association_descriptor iad;
 	struct usb_if_descriptor if0;
 	struct usb_ep_descriptor if0_out_ep;
 	struct usb_ep_descriptor if0_in_ep;
@@ -137,6 +136,10 @@ static int ares_if_submit_bulk_out(struct usbd_class_data *const c_data)
 		return -EBUSY; /* Already waiting for data */
 	}
 
+	if (k_msgq_num_free_get(&incoming_data_msgq) == 0) {
+		return 0;
+	}
+
 	buf = usbd_ep_buf_alloc(c_data, ares_if_get_bulk_out(c_data), ares_if_get_mps(c_data));
 	if (buf == NULL) {
 		LOG_ERR("Failed to allocate buffer for OUT endpoint");
@@ -174,13 +177,6 @@ static int ares_if_request_handler(struct usbd_class_data *const c_data, struct 
 	} else if (ep == ares_if_get_bulk_out(c_data)) {
 		atomic_clear_bit(&data->state, ARES_IF_FUNCTION_OUT_ENGAGED);
 
-		if (atomic_test_bit(&data->state, ARES_IF_FUNCTION_ENABLED) &&
-		    err_code != -ECONNABORTED) {
-			if (ares_if_submit_bulk_out(c_data) < 0) {
-				LOG_ERR("Failed to re-submit bulk OUT request");
-			}
-		}
-
 		if (buf->len == 12) {
 			LOG_HEXDUMP_ERR(buf->data, buf->len, "ERROR frame");
 			LOG_ERR("ERROR frame received");
@@ -190,7 +186,15 @@ static int ares_if_request_handler(struct usbd_class_data *const c_data, struct 
 		if (err_code == 0 && buf->len > 0) {
 			if (k_msgq_put(&incoming_data_msgq, &buf, K_NO_WAIT) != 0) {
 				/* Queue is full (back-pressure!). Drop packet and log. */
-				LOG_WRN("Incoming data queue full, packet dropped.");
+				{
+					static int64_t last_log_time = 0;
+					int64_t now = k_uptime_get();
+					if (now - last_log_time >= 500) { // 2Hz = 500ms
+						LOG_WRN("Incoming data queue full, packet "
+							"dropped.");
+						last_log_time = now;
+					}
+				}
 				net_buf_unref(buf);
 			} else {
 				LOG_DBG("Queued incoming buffer %p", buf);
@@ -200,6 +204,13 @@ static int ares_if_request_handler(struct usbd_class_data *const c_data, struct 
 			net_buf_unref(buf);
 		} else {
 			net_buf_unref(buf);
+		}
+
+		if (atomic_test_bit(&data->state, ARES_IF_FUNCTION_ENABLED) &&
+		    err_code != -ECONNABORTED) {
+			if (ares_if_submit_bulk_out(c_data) < 0) {
+				LOG_ERR("Failed to re-submit bulk OUT request");
+			}
 		}
 	}
 
@@ -265,12 +276,16 @@ struct usbd_class_api ares_if_api = {
 static void ares_processing_thread_entry(void *p1, void *p2, void *p3)
 {
 	struct net_buf *buf;
-
+	struct ares_if_data *data = usbd_class_get_private(ares_if_class_data);
 	// LOG_INF("ARES data processing thread started");
 
 	while (1) {
 		/* Wait forever for a data buffer from the ISR */
 		k_msgq_get(&incoming_data_msgq, &buf, K_FOREVER);
+
+		if (k_msgq_num_free_get(&incoming_data_msgq) > 0) {
+			ares_if_submit_bulk_out(ares_if_class_data);
+		}
 
 		LOG_DBG("Processing thread got buffer %p with len %u", buf, buf->len);
 
@@ -521,17 +536,6 @@ int ares_usbd_init(struct AresInterface *interface)
 /* === Descriptor and Class Data Definitions === */
 #define DEFINE_INTERFACE_DESCRIPTOR(x, _)                                                          \
 	static struct ares_if_desc ares_if_desc_##x = {                                            \
-		.iad =                                                                             \
-			{                                                                          \
-				.bLength = sizeof(struct usb_association_descriptor),              \
-				.bDescriptorType = USB_DESC_INTERFACE_ASSOC,                       \
-				.bFirstInterface = 0,                                              \
-				.bInterfaceCount = 1,                                              \
-				.bFunctionClass = USB_BCC_VENDOR,                                  \
-				.bFunctionSubClass = 0,                                            \
-				.bFunctionProtocol = 0,                                            \
-				.iFunction = 0,                                                    \
-			},                                                                         \
 		.if0 =                                                                             \
 			{                                                                          \
 				.bLength = sizeof(struct usb_if_descriptor),                       \
@@ -548,7 +552,7 @@ int ares_usbd_init(struct AresInterface *interface)
 			{                                                                          \
 				.bLength = sizeof(struct usb_ep_descriptor),                       \
 				.bDescriptorType = USB_DESC_ENDPOINT,                              \
-				.bEndpointAddress = BULK_EP_OUT_1,                                 \
+				.bEndpointAddress = BULK_EP_OUT,                                   \
 				.bmAttributes = USB_EP_TYPE_BULK,                                  \
 				.wMaxPacketSize = sys_cpu_to_le16(64U),                            \
 				.bInterval = 0x00,                                                 \
@@ -557,7 +561,7 @@ int ares_usbd_init(struct AresInterface *interface)
 			{                                                                          \
 				.bLength = sizeof(struct usb_ep_descriptor),                       \
 				.bDescriptorType = USB_DESC_ENDPOINT,                              \
-				.bEndpointAddress = BULK_EP_IN_1,                                  \
+				.bEndpointAddress = BULK_EP_IN,                                    \
 				.bmAttributes = USB_EP_TYPE_BULK,                                  \
 				.wMaxPacketSize = sys_cpu_to_le16(64U),                            \
 				.bInterval = 0x00,                                                 \
@@ -566,7 +570,7 @@ int ares_usbd_init(struct AresInterface *interface)
 			{                                                                          \
 				.bLength = sizeof(struct usb_ep_descriptor),                       \
 				.bDescriptorType = USB_DESC_ENDPOINT,                              \
-				.bEndpointAddress = BULK_EP_OUT_1,                                 \
+				.bEndpointAddress = BULK_EP_OUT,                                   \
 				.bmAttributes = USB_EP_TYPE_BULK,                                  \
 				.wMaxPacketSize = sys_cpu_to_le16(512U),                           \
 				.bInterval = 0x00,                                                 \
@@ -575,7 +579,7 @@ int ares_usbd_init(struct AresInterface *interface)
 			{                                                                          \
 				.bLength = sizeof(struct usb_ep_descriptor),                       \
 				.bDescriptorType = USB_DESC_ENDPOINT,                              \
-				.bEndpointAddress = BULK_EP_IN_1,                                  \
+				.bEndpointAddress = BULK_EP_IN,                                    \
 				.bmAttributes = USB_EP_TYPE_BULK,                                  \
 				.wMaxPacketSize = sys_cpu_to_le16(512U),                           \
 				.bInterval = 0x00,                                                 \
@@ -587,14 +591,12 @@ int ares_usbd_init(struct AresInterface *interface)
 			},                                                                         \
 	};                                                                                         \
 	const static struct usb_desc_header *ares_if_fs_desc_##x[] = {                             \
-		(struct usb_desc_header *)&ares_if_desc_##x.iad,                                   \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0,                                   \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0_in_ep,                             \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0_out_ep,                            \
 		(struct usb_desc_header *)&ares_if_desc_##x.nil_desc,                              \
 	};                                                                                         \
 	const static struct usb_desc_header *ares_if_hs_desc_##x[] = {                             \
-		(struct usb_desc_header *)&ares_if_desc_##x.iad,                                   \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0,                                   \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0_hs_in_ep,                          \
 		(struct usb_desc_header *)&ares_if_desc_##x.if0_hs_out_ep,                         \
