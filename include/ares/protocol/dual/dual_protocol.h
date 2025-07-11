@@ -74,6 +74,7 @@ int ares_dual_protocol_init(struct AresProtocol *protocol);
 
 #define SYNC_PACK_STATUS_READ  BIT(0)
 #define SYNC_PACK_STATUS_WRITE BIT(1)
+#define SYNC_PACK_STATUS_DONE  BIT(2)
 
 #define GET_8BITS(buf, n_byte)  (*(uint8_t *)(buf + n_byte))
 #define GET_16BITS(buf, n_byte) (*(uint16_t *)(buf + n_byte))

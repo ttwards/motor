@@ -199,6 +199,10 @@ static void parse_sync(struct AresProtocol *protocol, uint8_t *buf, size_t len)
 
 	memcpy(pack->data, data, data_len);
 
+	if (pack->cb != NULL) {
+		pack->cb(SYNC_PACK_STATUS_DONE);
+	}
+
 	return;
 }
 
