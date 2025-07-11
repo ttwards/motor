@@ -1,7 +1,7 @@
 # Copyright (c) 2021 Nordic Semiconductor ASA
 # SPDX-License-Identifier: Apache-2.0
 
-name: "motor demo"
+name: "ARES framework"
 build:
   # Path to the Kconfig file that will be sourced into Zephyr Kconfig tree under
   # Zephyr > Modules > example-application. Path is relative from root of this
