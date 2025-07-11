@@ -1,0 +1,18 @@
+# Kconfig for ARES Custom USB Application
+
+menu "ARES UART Application"
+
+config ARES_UART_LOG_LEVEL
+	int "Log level for ARES UART protocol"
+	default 3
+	help
+	  Select the log level for the ARES UART protocol.
+	  0=OFF, 1=ERR, 2=WRN, 3=INF, 4=DBG
+
+config ARES_UART_THREAD_STACK_SIZE
+    int "Stack size for ARES UART processing thread"
+    default 1024
+    help
+      Specifies the stack size for the thread that processes incoming UART data.
+
+endmenu # ARES UART Application
