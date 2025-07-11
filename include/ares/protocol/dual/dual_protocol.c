@@ -272,9 +272,9 @@ static void parse_error(struct AresProtocol *protocol, uint8_t data[], int8_t le
 int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
-	// if (!data->online) {
-	// 	return -EUNATCH;
-	// }
+	if (!data->online) {
+		return -EUNATCH;
+	}
 	if (pack == NULL) {
 		LOG_ERR("Sync pack is NULL.");
 		return -EINVAL;
