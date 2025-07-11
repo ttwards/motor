@@ -341,10 +341,10 @@ void mi_tx_data_handler(struct k_work *work)
 		const struct mi_motor_cfg *cfg = motor_devices[i]->config;
 		if (data->online) {
 			int can_id = get_can_id(motor_devices[i]);
-			if (data->missed_times > 4 && data->enabled == true) {
+			if (data->missed_times > 20 && data->enabled == true) {
 				LOG_ERR("Motor %s is not responding, setting it to offline.",
 					motor_devices[i]->name);
-
+				data->missed_times = 0;
 				struct can_frame frame = {0};
 				frame.flags = CAN_FRAME_IDE;
 				frame.dlc = 8;
