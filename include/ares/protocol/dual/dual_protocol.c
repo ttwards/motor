@@ -3,6 +3,7 @@
 #include "zephyr/kernel.h"
 #include "zephyr/net_buf.h"
 #include <zephyr/logging/log.h>
+#include "ares/interface/ares_interface.h"
 #include <stdint.h>
 
 LOG_MODULE_REGISTER(dual_protocol, LOG_LEVEL_INF);
@@ -44,14 +45,20 @@ struct net_buf *alloc_and_add_data(struct AresProtocol *protocol, uint8_t *data,
 	}
 }
 
+int send_try_lock(struct AresProtocol *protocol, struct net_buf *buf, struct k_mutex *mutex)
+{
+	if (protocol->interface->api->send_with_lock && mutex) {
+		return protocol->interface->api->send_with_lock(protocol->interface, buf, mutex);
+	} else {
+		k_mutex_unlock(mutex);
+		return protocol->interface->api->send(protocol->interface, buf);
+	}
+}
+
 static void error_handle(struct AresProtocol *protocol, uint16_t req_id, uint16_t error)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
 	if (!data->online) {
-		return;
-	}
-	if (k_mutex_lock(&data->err_frame_mutex, K_NO_WAIT) != 0) {
-		LOG_DBG("Failed to lock error frame mutex.");
 		return;
 	}
 	GET_16BITS(data->error_frame_buf, ERROR_HEAD_IDX) = ERROR_FRAME_HEAD;
@@ -68,8 +75,7 @@ static void error_handle(struct AresProtocol *protocol, uint16_t req_id, uint16_
 		LOG_ERR("Failed to allocate buffer for error frame.");
 		return;
 	}
-	int err = protocol->interface->api->send_with_lock(protocol->interface, buf,
-							   &data->err_frame_mutex);
+	int err = send_try_lock(protocol, buf, NULL);
 	if (err != 0) {
 		// LOG_ERR("Failed to send error frame. %d", err);
 	}
@@ -155,7 +161,8 @@ static void usb_trans_heart_beat(struct k_timer *timer)
 	if (data->online) {
 		if ((k_uptime_get_32() - data->last_heart_beat) <= HEART_BEAT_DELAY &&
 		    ((int32_t)(k_uptime_get_32() - data->last_receive) >= 10 * HEART_BEAT_DELAY)) {
-			LOG_ERR("Connection lost. last_heart_beat: %d, last_receive: %d, current: "
+			LOG_ERR("Connection lost. last_heart_beat: %d, last_receive: %d, "
+				"current: "
 				"%d",
 				data->last_heart_beat, data->last_receive, k_uptime_get_32());
 			data->online = false;
@@ -228,6 +235,10 @@ static void parse_func(struct AresProtocol *protocol, func_table_t *map)
 	data->func_tx_bckup_cnt++;
 
 	uint8_t *repl_frame = map->buf;
+	if (k_mutex_lock(&map->mutex, K_NO_WAIT) != 0) {
+		LOG_DBG("Failed to lock FUNC frame mutex.");
+		return;
+	}
 	GET_16BITS(repl_frame, REPL_HEAD_IDX) = REPL_FRAME_HEAD;
 	GET_16BITS(repl_frame, REPL_FUNC_ID_IDX) = map->id;
 	GET_32BITS(repl_frame, REPL_RET_IDX) = (uint32_t)ret;
@@ -235,7 +246,7 @@ static void parse_func(struct AresProtocol *protocol, func_table_t *map)
 
 	int err = 0;
 	struct net_buf *buf = alloc_and_add_data(protocol, repl_frame, REPL_FRAME_LENGTH);
-	err = protocol->interface->api->send_with_lock(protocol->interface, buf, &map->mutex);
+	err = send_try_lock(protocol, buf, &map->mutex);
 
 	if (err != 0) {
 		LOG_ERR("Failed to send FUNC frame.");
@@ -281,11 +292,12 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack)
 	}
 	memcpy(pack->buf + SYNC_DATA_IDX, pack->data, pack->len);
 
-	// LOG_HEXDUMP_DBG(pack->buf, pack->len + SYNC_FRAME_LENGTH_OFFSET, "Sync data to send:");
+	// LOG_HEXDUMP_DBG(pack->buf, pack->len + SYNC_FRAME_LENGTH_OFFSET, "Sync data to
+	// send:");
 
 	struct net_buf *buf =
 		alloc_and_add_data(protocol, pack->buf, pack->len + SYNC_FRAME_LENGTH_OFFSET);
-	int ret = protocol->interface->api->send_with_lock(protocol->interface, buf, &pack->mutex);
+	int ret = send_try_lock(protocol, buf, &pack->mutex);
 
 	if (ret != 0) {
 		// LOG_ERR("Failed to send SYNC frame. %d", ret);

@@ -1,1 +1,2 @@
 add_subdirectory_ifdef(CONFIG_USB_BULK_INTERFACE usb)
+add_subdirectory_ifdef(CONFIG_UART_INTERFACE uart)

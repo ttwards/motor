@@ -1,13 +1,11 @@
 #ifndef ARES_PROTOCOL_H
 #define ARES_PROTOCOL_H
 
-#include <ares/interface/ares_interface.h>
+#include <zephyr/kernel.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-struct AresInterface;
 
 enum AresProtocolEvent {
 	ARES_PROTOCOL_EVENT_CONNECTED,
@@ -23,6 +21,7 @@ enum AresProtocolEvent {
  */
 struct AresProtocolAPI {
 	void (*handle)(struct AresProtocol *protocol, struct net_buf *buf);
+	void (*handle_raw)(struct AresProtocol *protocol, uint8_t *data, uint16_t len);
 	void (*event)(struct AresProtocol *protocol, enum AresProtocolEvent event);
 	int (*init)(struct AresProtocol *protocol);
 };

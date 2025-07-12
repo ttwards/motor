@@ -1,10 +1,10 @@
 #ifndef ARES_DUAL_PROTOCOL_H
 #define ARES_DUAL_PROTOCOL_H
 
-#include <ares/protocol/ares_protocol.h>
 #include <zephyr/net_buf.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
+#include "ares/protocol/ares_protocol.h"
 
 void ares_dual_protocol_handle(struct AresProtocol *protocol, struct net_buf *buf);
 void ares_dual_protocol_event(struct AresProtocol *protocol, enum AresProtocolEvent event);
