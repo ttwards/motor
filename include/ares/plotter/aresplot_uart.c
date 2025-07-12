@@ -12,7 +12,7 @@ LOG_MODULE_REGISTER(aresplot_uart, LOG_LEVEL_INF);
 #define UART_SLAB_SIZE 4
 
 static aresplot_uart_t aresplot_instance;
-static K_MEM_SLAB_DEFINE(aresplot_uart_slab, BUF_SIZE, UART_SLAB_SIZE, 4);
+K_MEM_SLAB_DEFINE(aresplot_uart_slab, BUF_SIZE, UART_SLAB_SIZE, 4);
 
 static K_SEM_DEFINE(aresplot_sem, 0, 1);
 

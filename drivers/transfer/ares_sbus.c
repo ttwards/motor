@@ -16,7 +16,7 @@ LOG_MODULE_REGISTER(ares_sbus, 60);
 
 // serial buffer pool
 #define BUF_SIZE 64
-static K_MEM_SLAB_DEFINE(sbus_uart_slab, BUF_SIZE, 4, 4);
+K_MEM_SLAB_DEFINE(sbus_uart_slab, BUF_SIZE, 4, 4);
 
 static const struct device *uart_dev = DEVICE_DT_GET(DT_CHOSEN(sbus_uart));
 
