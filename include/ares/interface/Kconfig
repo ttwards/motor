@@ -1,5 +1,5 @@
 rsource "usb/Kconfig"
-
+rsource "uart/Kconfig"
 
 config USB_BULK_INTERFACE
 	bool "USB_BULK_INTERFACE"

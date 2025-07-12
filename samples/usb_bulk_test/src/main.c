@@ -2,7 +2,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net_buf.h>
-#include <ares/interface/usb/usb_bulk.h>
+// #include <ares/interface/usb/usb_bulk.h>
+#include <ares/interface/uart/uart.h>
 #include <ares/protocol/dual/dual_protocol.h>
 #include <ares/ares_comm.h>
 
@@ -10,8 +11,12 @@
 
 LOG_MODULE_REGISTER(main_app, LOG_LEVEL_INF);
 
+#define UART_DEV DT_NODELABEL(usart6)
+static const struct device *uart_dev = DEVICE_DT_GET(UART_DEV);
+
 DUAL_PROPOSE_PROTOCOL_DEFINE(dual_protocol);
-ARES_BULK_INTERFACE_DEFINE(usb_bulk_interface);
+// ARES_BULK_INTERFACE_DEFINE(usb_bulk_interface);
+ARES_UART_INTERFACE_DEFINE(usb_bulk_interface);
 
 int cnt = 0;
 void func_cb(uint32_t param1, uint32_t param2, uint32_t param3)
@@ -27,6 +32,7 @@ int main(void)
 	// Initialize the USB stack and our async pipeline.
 	// Pass the function that will handle the data.
 	// int err = ares_usbd_init(&usb_bulk_interface);
+	ares_uart_init_dev(&usb_bulk_interface, uart_dev);
 	int err = ares_bind_interface(&usb_bulk_interface, &dual_protocol);
 	dual_func_add(&dual_protocol, 0x1, func_cb);
 	sync_table_t *pack = dual_sync_add(&dual_protocol, 0x1, test, sizeof(test), func_cb);
