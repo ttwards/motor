@@ -4,32 +4,21 @@
    ```mermaid
    packet-beta
    title 执行帧
-   0-1: "0xBABE"
-   2: "Code"
-   3: "Num"
+   0-1: "0xCAFE"
+   2-3: "ID"
    4-7: "Arg1"
    8-11: "Arg2"
    12-15: "Arg3"
    16-17: "Request ID"
-   18-19: "CRC-16"
-   20-21: "0xDEAD"
    ```
 #### 2. 接收帧
    ```mermaid
    packet-beta
    title 返回帧
    0-1: "0x1A64"
-   2-3: "Request ID"
-   4: "Type"
-   5-8: "Value"
-   9: "CRC-8"
-   10-11: "End 0xDEAD"
-   ```
-   ```
-   enum Type {
-	   0x86: "INT32",
-	   0x32: "FP32"
-   }
+   2-3: "Func ID"
+   4-7: "Return Value"
+   8-9: "Value"
    ```
 ### 二、数据
 #### 1. 接收帧
