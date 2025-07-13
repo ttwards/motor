@@ -3,6 +3,7 @@
 #include "zephyr/kernel.h"
 #include "zephyr/net_buf.h"
 #include <zephyr/logging/log.h>
+#include <sys/errno.h>
 #include "ares/interface/ares_interface.h"
 #include <stdint.h>
 
@@ -189,7 +190,7 @@ static void parse_sync(struct AresProtocol *protocol, uint8_t *buf, size_t len)
 
 	sync_table_t *pack = find_pack(protocol->priv_data, ID);
 	if (pack == NULL) {
-		LOG_ERR("Cannot find corresponding ID from sync table.");
+		LOG_ERR("Cannot find corresponding ID from sync table: 0x%x", ID);
 		return;
 	}
 
@@ -210,6 +211,20 @@ static void parse_sync(struct AresProtocol *protocol, uint8_t *buf, size_t len)
 		pack->cb(SYNC_PACK_STATUS_DONE);
 	}
 
+	return;
+}
+
+static void parse_repl(struct AresProtocol *protocol, uint8_t *buf, size_t len)
+{
+	uint16_t ID = GET_16BITS(buf, REPL_FUNC_ID_IDX);
+	uint16_t req_id = GET_16BITS(buf, REPL_REQ_ID_IDX);
+	uint32_t ret = GET_32BITS(buf, REPL_RET_IDX);
+
+	struct dual_protocol_data *data = protocol->priv_data;
+	if (data->func_ret_cb != NULL) {
+		data->func_ret_cb(ID, req_id, ret);
+	}
+	LOG_DBG("REPL frame received: ID %x, req_id %x, ret %x", ID, req_id, ret);
 	return;
 }
 
@@ -249,7 +264,7 @@ static void parse_func(struct AresProtocol *protocol, func_table_t *map)
 	err = send_try_lock(protocol, buf, &map->mutex);
 
 	if (err != 0) {
-		LOG_ERR("Failed to send FUNC frame.");
+		LOG_ERR("Failed to send REPLY frame.");
 		return;
 	}
 	return;
@@ -280,6 +295,21 @@ static void parse_error(struct AresProtocol *protocol, uint8_t data[], int8_t le
 	return;
 }
 
+int dual_ret_cb_set(struct AresProtocol *protocol, dual_func_ret_cb_t cb)
+{
+	struct dual_protocol_data *data = protocol->priv_data;
+	if (cb == NULL) {
+		LOG_ERR("Callback function is NULL.");
+		return -EINVAL;
+	}
+	if (data->func_ret_cb != NULL) {
+		LOG_ERR("Callback function already set.");
+		return -EALREADY;
+	}
+	data->func_ret_cb = cb;
+	return 0;
+}
+
 int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
@@ -306,6 +336,34 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack)
 	return 0;
 }
 
+int dual_func_call(struct AresProtocol *protocol, uint16_t id, uint32_t arg1, uint32_t arg2,
+		   uint32_t arg3)
+{
+	struct dual_protocol_data *data = protocol->priv_data;
+	if (!data->online) {
+		return -EUNATCH;
+	}
+	struct net_buf *buf = protocol->interface->api->alloc_buf(protocol->interface);
+	if (buf == NULL) {
+		LOG_ERR("Failed to allocate buffer for FUNC frame.");
+		return -ENOMEM;
+	}
+	net_buf_add(buf, FUNC_FRAME_LENGTH);
+	GET_16BITS(buf->data, FUNC_HEAD_IDX) = FUNC_FRAME_HEAD;
+	GET_16BITS(buf->data, FUNC_ID_IDX) = id;
+	GET_32BITS(buf->data, FUNC_ARG1_IDX) = arg1;
+	GET_32BITS(buf->data, FUNC_ARG2_IDX) = arg2;
+	GET_32BITS(buf->data, FUNC_ARG3_IDX) = arg3;
+	uint16_t req_id = k_uptime_get_32();
+	GET_16BITS(buf->data, FUNC_REQ_IDX) = req_id;
+	int err = protocol->interface->api->send(protocol->interface, buf);
+	if (err != 0) {
+		LOG_ERR("Failed to send FUNC frame.");
+		return -EBUSY;
+	}
+	return req_id;
+}
+
 sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t *buf, size_t len,
 			    dual_trans_cb_t cb)
 {
@@ -316,7 +374,7 @@ sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t 
 	}
 	data->sync_table[data->sync_cnt].interface = protocol->interface;
 	data->sync_table[data->sync_cnt].data = buf;
-	data->sync_table[data->sync_cnt].ID = sys_cpu_to_be16(ID);
+	data->sync_table[data->sync_cnt].ID = ID;
 	data->sync_table[data->sync_cnt].len = len;
 	data->sync_table[data->sync_cnt].cb = cb;
 	data->sync_table[data->sync_cnt].buf = k_heap_aligned_alloc(
@@ -338,7 +396,7 @@ sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t 
 	return &data->sync_table[data->sync_cnt - 1];
 }
 
-void dual_func_add(struct AresProtocol *protocol, uint16_t header, dual_trans_func_t cb)
+void dual_func_add(struct AresProtocol *protocol, uint16_t id, dual_trans_func_t cb)
 {
 	if (cb == NULL) {
 		LOG_ERR("Callback function is NULL.");
@@ -349,7 +407,7 @@ void dual_func_add(struct AresProtocol *protocol, uint16_t header, dual_trans_fu
 		LOG_ERR("Func count exceeds maximum.");
 		return;
 	}
-	data->func_table[data->func_cnt].id = sys_cpu_to_be16(header);
+	data->func_table[data->func_cnt].id = id;
 	data->func_table[data->func_cnt].cb = cb;
 	data->func_cnt++;
 }
@@ -368,16 +426,69 @@ void dual_func_remove(struct AresProtocol *protocol, uint16_t header)
 	return;
 }
 
-static void rx_frame_parser(struct AresProtocol *protocol, uint8_t *buf, uint8_t len)
+// 根据帧头确定帧类型
+static enum frame_type get_frame_type(uint16_t header)
 {
-	// LOG_INF("RX frame: %d", len);
-	if (len == 0) {
-		return;
-	}
-	struct dual_protocol_data *data = protocol->priv_data;
-	data->last_receive = k_uptime_get_32();
-	switch (GET_16BITS(buf, 0)) {
+	switch (header) {
+	case SYNC_FRAME_HEAD:
+		return FRAME_TYPE_SYNC;
 	case FUNC_FRAME_HEAD:
+		return FRAME_TYPE_FUNC;
+	case ERROR_FRAME_HEAD:
+		return FRAME_TYPE_ERROR;
+	case REPL_FRAME_HEAD:
+		return FRAME_TYPE_REPL;
+	default:
+		return FRAME_TYPE_UNKNOWN;
+	}
+}
+
+// 根据帧类型和数据确定帧长度
+static uint16_t get_frame_length(struct AresProtocol *protocol, enum frame_type type, uint8_t *buf)
+{
+	switch (type) {
+	case FRAME_TYPE_FUNC:
+		return FUNC_FRAME_LENGTH;
+	case FRAME_TYPE_ERROR:
+		return ERROR_FRAME_LENGTH;
+	case FRAME_TYPE_REPL:
+		return REPL_FRAME_LENGTH;
+	case FRAME_TYPE_SYNC:
+		if (buf != NULL) {
+			// 需要根据sync_table中的信息确定长度
+			uint16_t sync_id = GET_16BITS(buf, SYNC_ID_IDX);
+			sync_table_t *pack = find_pack(protocol->priv_data, sync_id);
+			if (pack != NULL) {
+				return pack->len + SYNC_FRAME_LENGTH_OFFSET;
+			}
+		}
+		return 0; // 无法确定长度
+	default:
+		return 0;
+	}
+}
+
+// 重置状态机
+static void reset_parser_state(struct dual_protocol_data *data)
+{
+	data->state = PARSER_STATE_IDLE;
+	data->current_frame_type = FRAME_TYPE_UNKNOWN;
+	data->rx_buffer_pos = 0;
+	data->expected_frame_length = 0;
+	data->header_value = 0;
+}
+
+// 处理完整的帧
+static void process_complete_frame(struct AresProtocol *protocol)
+{
+	struct dual_protocol_data *data = protocol->priv_data;
+	uint8_t *buf = data->rx_buffer;
+	uint16_t len = data->rx_buffer_pos;
+
+	LOG_DBG("Processing complete frame: type %d, length %d", data->current_frame_type, len);
+
+	switch (data->current_frame_type) {
+	case FRAME_TYPE_FUNC:
 		if (len != FUNC_FRAME_LENGTH) {
 			LOG_ERR("FUNC frame length mismatch: %d vs %d", FUNC_FRAME_LENGTH, len);
 			error_handle(protocol, GET_16BITS(buf, FUNC_ID_IDX), UNKNOWN_TAIL);
@@ -390,39 +501,151 @@ static void rx_frame_parser(struct AresProtocol *protocol, uint8_t *buf, uint8_t
 			LOG_ERR("Cannot find corresponding ID 0x%x in func mappings.",
 				GET_16BITS(buf, FUNC_ID_IDX));
 			LOG_HEXDUMP_DBG(buf, len, "FUNC frame");
-			// error_handle(0, UNKNOWN_FUNC);
-			return;
+			// error_handle(protocol, GET_16BITS(buf, FUNC_ID_IDX), UNKNOWN_FUNC);
+			break;
 		}
 		map->arg1 = GET_32BITS(buf, FUNC_ARG1_IDX);
 		map->arg2 = GET_32BITS(buf, FUNC_ARG2_IDX);
 		map->arg3 = GET_32BITS(buf, FUNC_ARG3_IDX);
-		map->req_id = GET_32BITS(buf, FUNC_REQ_IDX);
+		map->req_id = GET_16BITS(buf, FUNC_REQ_IDX);
 		parse_func(protocol, map);
 		break;
-	case SYNC_FRAME_HEAD:
+	case FRAME_TYPE_SYNC:
 		parse_sync(protocol, buf, len);
 		LOG_DBG("SYNC frame received: ID %x", GET_16BITS(buf, SYNC_ID_IDX));
 		break;
-	case ERROR_FRAME_HEAD:
+	case FRAME_TYPE_ERROR:
 		if (len != ERROR_FRAME_LENGTH) {
 			LOG_ERR("ERROR frame length mismatch: %d vs %d", ERROR_FRAME_LENGTH, len);
 			LOG_HEXDUMP_ERR(buf, len, "ERROR frame");
 			error_handle(protocol, GET_16BITS(buf, ERROR_ID_IDX), UNKNOWN_TAIL);
 			break;
 		}
-		// LOG_HEXDUMP_DBG(buf, len, "RX frame");
 		parse_error(protocol, buf, len);
 		break;
+	case FRAME_TYPE_REPL:
+		parse_repl(protocol, buf, len);
+		break;
 	default:
-		LOG_ERR("Unknown frame received: %x", GET_16BITS(buf, 0));
+		LOG_ERR("Unknown frame type: %d", data->current_frame_type);
 		LOG_HEXDUMP_ERR(buf, len, "Unknown frame");
+		break;
+	}
+
+	// 重置状态机
+	reset_parser_state(data);
+}
+
+// 状态机处理单个字节
+static void process_byte(struct AresProtocol *protocol, uint8_t byte)
+{
+	struct dual_protocol_data *data = protocol->priv_data;
+
+	switch (data->state) {
+	case PARSER_STATE_IDLE:
+		// 等待帧头第一个字节
+		data->rx_buffer[0] = byte;
+		data->rx_buffer_pos = 1;
+		data->state = PARSER_STATE_HEADER_FIRST;
+		break;
+
+	case PARSER_STATE_HEADER_FIRST:
+		// 接收帧头第二个字节
+		data->rx_buffer[1] = byte;
+		data->rx_buffer_pos = 2;
+		data->header_value = GET_16BITS(data->rx_buffer, 0);
+		data->current_frame_type = get_frame_type(data->header_value);
+
+		if (data->current_frame_type == FRAME_TYPE_UNKNOWN) {
+			LOG_ERR("Unknown frame header: 0x%04x", data->header_value);
+			LOG_HEXDUMP_ERR(data->rx_buffer, 2, "Unknown frame header");
+			reset_parser_state(data);
+			break;
+		}
+
+		// 对于非SYNC帧，可以立即确定长度
+		if (data->current_frame_type != FRAME_TYPE_SYNC) {
+			data->expected_frame_length =
+				get_frame_length(protocol, data->current_frame_type, NULL);
+			if (data->expected_frame_length == 0) {
+				LOG_ERR("Cannot determine frame length for type %d",
+					data->current_frame_type);
+				reset_parser_state(data);
+				break;
+			}
+		}
+
+		// 检查是否已经收到完整帧（只有2字节的帧不存在）
+		if (data->expected_frame_length > 0 &&
+		    data->rx_buffer_pos >= data->expected_frame_length) {
+			data->state = PARSER_STATE_FRAME_COMPLETE;
+			process_complete_frame(protocol);
+		} else {
+			data->state = PARSER_STATE_RECEIVING_DATA;
+		}
+		break;
+
+	case PARSER_STATE_RECEIVING_DATA:
+		// 接收数据字节
+		if (data->rx_buffer_pos >= sizeof(data->rx_buffer)) {
+			LOG_ERR("RX buffer overflow");
+			reset_parser_state(data);
+			break;
+		}
+
+		data->rx_buffer[data->rx_buffer_pos++] = byte;
+
+		// 对于SYNC帧，需要在接收到ID后确定长度
+		if (data->current_frame_type == FRAME_TYPE_SYNC && data->rx_buffer_pos == 4) {
+			data->expected_frame_length = get_frame_length(
+				protocol, data->current_frame_type, data->rx_buffer);
+			if (data->expected_frame_length == 0) {
+				LOG_ERR("Cannot determine SYNC frame length");
+				reset_parser_state(data);
+				break;
+			}
+		}
+
+		// 检查是否收到完整帧
+		if (data->expected_frame_length > 0 &&
+		    data->rx_buffer_pos >= data->expected_frame_length) {
+			data->state = PARSER_STATE_FRAME_COMPLETE;
+			process_complete_frame(protocol);
+		}
+		break;
+
+	case PARSER_STATE_FRAME_COMPLETE:
+		// 这种状态不应该出现，重置状态机
+		LOG_ERR("Unexpected byte in FRAME_COMPLETE state");
+		reset_parser_state(data);
+		process_byte(protocol, byte); // 重新处理这个字节
 		break;
 	}
 }
 
+static void rx_frame_parser(struct AresProtocol *protocol, uint8_t *buf, uint8_t len)
+{
+	if (len == 0) {
+		return;
+	}
+
+	struct dual_protocol_data *data = protocol->priv_data;
+	data->last_receive = k_uptime_get_32();
+
+	// 逐字节处理
+	for (uint8_t i = 0; i < len; i++) {
+		process_byte(protocol, buf[i]);
+	}
+}
+
+void ares_dual_protocol_handle_byte(struct AresProtocol *protocol, uint8_t byte)
+{
+	process_byte(protocol, byte);
+}
+
 int ares_dual_protocol_init(struct AresProtocol *protocol)
 {
-	LOG_INF("init");
+	LOG_INF("Dual protocol init");
 	struct dual_protocol_data *data = protocol->priv_data;
 	k_mutex_init(&data->err_frame_mutex);
 	k_timer_init(&data->heart_beat_timer, usb_trans_heart_beat, NULL);
@@ -432,6 +655,14 @@ int ares_dual_protocol_init(struct AresProtocol *protocol)
 	uint8_t *msgq_buf = k_heap_aligned_alloc(&dual_protocol_heap, 4,
 						 sizeof(struct tx_msg_bck) * 10, K_NO_WAIT);
 	k_msgq_init(&data->func_tx_bckup_msgq, msgq_buf, sizeof(struct tx_msg_bck), 10);
+
+	// 初始化状态机
+	data->state = PARSER_STATE_IDLE;
+	data->current_frame_type = FRAME_TYPE_UNKNOWN;
+	data->rx_buffer_pos = 0;
+	data->expected_frame_length = 0;
+	data->header_value = 0;
+
 	return 0;
 }
 
@@ -451,8 +682,12 @@ void ares_dual_protocol_event(struct AresProtocol *protocol, enum AresProtocolEv
 		LOG_INF("Connection established due to event.");
 		k_msleep(600);
 		data->online = true;
+		// 重置状态机状态
+		reset_parser_state(data);
 	} else if (event == ARES_PROTOCOL_EVENT_DISCONNECTED) {
 		LOG_INF("Connection lost due to event.");
 		data->online = false;
+		// 重置状态机状态
+		reset_parser_state(data);
 	}
 }

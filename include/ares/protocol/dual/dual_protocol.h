@@ -7,8 +7,26 @@
 #include "ares/protocol/ares_protocol.h"
 
 void ares_dual_protocol_handle(struct AresProtocol *protocol, struct net_buf *buf);
+void ares_dual_protocol_handle_byte(struct AresProtocol *protocol, uint8_t byte);
 void ares_dual_protocol_event(struct AresProtocol *protocol, enum AresProtocolEvent event);
 int ares_dual_protocol_init(struct AresProtocol *protocol);
+
+// 状态机状态枚举
+enum parser_state {
+	PARSER_STATE_IDLE,           // 等待帧头第一个字节
+	PARSER_STATE_HEADER_FIRST,   // 已接收第一个字节，等待第二个字节
+	PARSER_STATE_RECEIVING_DATA, // 接收数据
+	PARSER_STATE_FRAME_COMPLETE  // 帧接收完成
+};
+
+// 帧类型枚举
+enum frame_type {
+	FRAME_TYPE_UNKNOWN = 0,
+	FRAME_TYPE_SYNC,
+	FRAME_TYPE_FUNC,
+	FRAME_TYPE_ERROR,
+	FRAME_TYPE_REPL
+};
 
 #define ARES_DUAL_PROTOCOL_DEFINE(Protocol_name)                                                   \
 	struct AresProtocol Protocol_name = {                                                      \
@@ -87,6 +105,8 @@ typedef void (*dual_trans_cb_t)(int status);
 
 typedef uint32_t (*dual_trans_func_t)(uint32_t arg1, uint32_t arg2, uint32_t arg3);
 
+typedef void (*dual_func_ret_cb_t)(uint16_t id, uint16_t req_id, uint32_t ret);
+
 struct sync_pack {
 	uint16_t ID;
 	struct AresInterface *interface;
@@ -129,13 +149,28 @@ struct dual_protocol_data {
 	uint32_t last_heart_beat;
 	uint32_t last_receive;
 
+	dual_func_ret_cb_t func_ret_cb;
+
 	uint8_t func_tx_bckup_cnt;
 	__aligned(4) uint8_t error_frame_buf[ERROR_FRAME_LENGTH];
+	
+	// 状态机相关字段
+	enum parser_state state;
+	enum frame_type current_frame_type;
+	uint8_t rx_buffer[256];  // 接收缓冲区
+	uint16_t rx_buffer_pos;  // 当前接收位置
+	uint16_t expected_frame_length;  // 期望的帧长度
+	uint16_t header_value;   // 帧头值
 };
+
+int dual_ret_cb_set(struct AresProtocol *protocol, dual_func_ret_cb_t cb);
 
 void dual_func_add(struct AresProtocol *protocol, uint16_t header, dual_trans_func_t cb);
 
 void dual_func_remove(struct AresProtocol *protocol, uint16_t header);
+
+int dual_func_call(struct AresProtocol *protocol, uint16_t id, uint32_t arg1, uint32_t arg2,
+		   uint32_t arg3);
 
 sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t *buf, size_t len,
 			    dual_trans_cb_t cb);
@@ -166,6 +201,7 @@ void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void
 #define DUAL_PROPOSE_PROTOCOL_DEFINE(Protocol_name)                                                \
 	struct AresProtocolAPI Protocol_name##_api = {                                             \
 		.handle = ares_dual_protocol_handle,                                               \
+		.handle_byte = ares_dual_protocol_handle_byte,                                     \
 		.event = ares_dual_protocol_event,                                                 \
 		.init = ares_dual_protocol_init,                                                   \
 	};                                                                                         \
@@ -176,6 +212,12 @@ void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void
 		.sync_cnt = 0,                                                                     \
 		.func_tx_bckup_msgq = {0},                                                         \
 		.online = false,                                                                   \
+		.func_tx_bckup_cnt = 0,                                                            \
+		.state = PARSER_STATE_IDLE,                                                        \
+		.current_frame_type = FRAME_TYPE_UNKNOWN,                                          \
+		.rx_buffer_pos = 0,                                                                \
+		.expected_frame_length = 0,                                                        \
+		.header_value = 0,                                                                 \
 	};                                                                                         \
 	struct AresProtocol Protocol_name = {                                                      \
 		.name = #Protocol_name,                                                            \
