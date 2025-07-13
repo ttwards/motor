@@ -341,7 +341,7 @@ void mi_tx_data_handler(struct k_work *work)
 		const struct mi_motor_cfg *cfg = motor_devices[i]->config;
 		if (data->online) {
 			int can_id = get_can_id(motor_devices[i]);
-			if (data->missed_times > 20 && data->enabled == true) {
+			if (data->missed_times > 300 && data->enabled == true) {
 				LOG_ERR("Motor %s is not responding, setting it to offline.",
 					motor_devices[i]->name);
 				data->missed_times = 0;
@@ -384,8 +384,8 @@ void mi_init_handler(struct k_work *work)
 
 		reg_can_dev(cfg->common.phy);
 		filters[i].flags = CAN_FILTER_IDE;
-		filters[i].mask = 0x1F0000FF;
-		filters[i].id = 0x1F000000 | (cfg->common.id & 0xFF);
+		filters[i].mask = 0x1F000000;
+		filters[i].id = 0x02000000 | (cfg->common.id & 0xFF);
 		int err = can_add_rx_filter(cfg->common.phy, mi_can_rx_handler, 0, &filters[i]);
 		if (err < 0) {
 			LOG_ERR("Error adding CAN filter (err %d)", err);
