@@ -15,6 +15,11 @@ menuconfig ARES
 module = ARES
 module-str = ARES
 
+config UART_INTERFACE
+	bool "UART_INTERFACE"
+	help
+	  Enable UART_INTERFACE
+
 config USB_BULK_INTERFACE
 	bool "USB_BULK_INTERFACE"
 	help

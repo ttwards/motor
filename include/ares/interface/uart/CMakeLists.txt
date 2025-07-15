@@ -3,8 +3,8 @@
 
 zephyr_library()
 
-set(USB_BULK_INTERFACE_SOURCES
-	usb_bulk.c
+set(UART_INTERFACE_SOURCES
+	uart.c
 )
 
-zephyr_library_sources(${USB_BULK_INTERFACE_SOURCES})
+zephyr_library_sources(${UART_INTERFACE_SOURCES})

@@ -24,6 +24,7 @@ struct AresInterfaceAPI {
 	int (*send)(struct AresInterface *interface, struct net_buf *buf);
 	int (*send_with_lock)(struct AresInterface *interface, struct net_buf *buf,
 			      struct k_mutex *mutex);
+	int (*send_raw)(struct AresInterface *interface, uint8_t *data, uint16_t len);
 
 	int (*connect)(struct AresInterface *interface);
 	int (*disconnect)(struct AresInterface *interface);
