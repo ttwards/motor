@@ -59,6 +59,7 @@ typedef struct {
 	chassis_status_t target_status;
 
 	bool track_angle;
+	bool static_angle;
 	bool enabled;
 
 	struct pos_data chassis_sensor_data;
@@ -85,6 +86,8 @@ typedef void (*chassis_set_angle_t)(const struct device *dev, float angle);
 
 typedef void (*chassis_set_gyro_t)(const struct device *dev, float gyro);
 
+typedef void (*chassis_set_static_t)(const struct device *dev, bool static_angle);
+
 typedef chassis_status_t *(*chassis_get_status_t)(const struct device *dev);
 
 /**
@@ -95,6 +98,7 @@ __subsystem struct chassis_driver_api {
 	chassis_set_angle_t set_angle;
 	chassis_set_gyro_t set_gyro;
 	chassis_get_status_t get_status;
+	chassis_set_static_t set_static;
 };
 
 __syscall void chassis_set_speed(const struct device *dev, float speedX, float speedY);
