@@ -51,23 +51,6 @@ struct AresInterface {
 	void *priv_data;    // Interface-specific private data (e.g., UART device ptr)
 };
 
-/**
- * @brief Loads a protocol onto a communication interface.
- *
- * @param interface Pointer to the interface instance.
- * @param protocol Pointer to the protocol definition to load.
- * @return 0 on success, negative error code on failure.
- */
-static inline int ares_interface_load_protocol(struct AresInterface *interface,
-					       struct AresProtocol *protocol)
-{
-	if (!interface || !protocol) {
-		return -EINVAL;
-	}
-	interface->protocol = protocol;
-	return 0;
-}
-
 #ifdef __cplusplus
 }
 #endif
