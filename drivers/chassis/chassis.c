@@ -84,6 +84,12 @@ void cchassis_set_gyro(const struct device *dev, float gyro)
 	data->angleControl = false;
 }
 
+void cchassis_set_static(const struct device *dev, bool static_angle)
+{
+	chassis_data_t *data = dev->data;
+	data->static_angle = static_angle;
+}
+
 chassis_status_t *cchassis_get_status(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
@@ -98,6 +104,13 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->set_status.gyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->set_status.gyro;
 		float speedX, speedY;
+		if (data->static_angle) {
+			int err = wheel_set_static(cfg->wheels[idx], data->angle_to_center[idx]);
+			if (err < 0) {
+				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
+			}
+			continue;
+		}
 		if (!data->track_angle) {
 			speedX = rollSpeedX + data->set_status.speedX;
 			speedY = rollSpeedY + data->set_status.speedY;
@@ -117,14 +130,7 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 
 		steerwheel_angle = -RAD2DEG(steerwheel_angle) + 90.0f;
 
-		if (fabsf(steerwheel_speed) > 0.1f || fabsf(data->set_status.gyro) > 0.15f) {
-			wheel_set_speed(cfg->wheels[idx], steerwheel_speed, steerwheel_angle);
-		} else {
-			int err = wheel_set_static(cfg->wheels[idx], data->angle_to_center[idx]);
-			if (err < 0) {
-				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
-			}
-		}
+		wheel_set_speed(cfg->wheels[idx], steerwheel_speed, steerwheel_angle);
 	}
 }
 
@@ -215,14 +221,52 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 
 		float delta_speed_X = data->target_status.speedX - data->set_status.speedX;
 		float delta_speed_Y = data->target_status.speedY - data->set_status.speedY;
-		float delta_speed =
-			sqrtf(delta_speed_X * delta_speed_X + delta_speed_Y * delta_speed_Y);
-		float delta_speed_angle = atan2f(delta_speed_Y, delta_speed_X);
-		delta_speed = (delta_speed > (cfg->max_lin_accel * deltaTimeUs) * 0.000001f)
-				      ? (cfg->max_lin_accel * deltaTimeUs) * 0.000001f
-				      : delta_speed;
-		data->set_status.speedX += delta_speed * cosf(delta_speed_angle);
-		data->set_status.speedY += delta_speed * sinf(delta_speed_angle);
+		float deltaTime = (float)deltaTimeUs * 0.000001f;
+
+		// Calculate ground acceleration, including centripetal acceleration, expressed in
+		// chassis frame
+		float ax_d = delta_speed_X / deltaTime; // desired linear acceleration x
+		float ay_d = delta_speed_Y / deltaTime; // desired linear acceleration y
+
+		float vx = data->set_status.speedX;
+		float vy = data->set_status.speedY;
+		float omega = data->target_status.gyro;
+
+		// Centripetal acceleration component: a_c = omega x v
+		// In 2D, with v=(vx, vy) and omega being a scalar rotating around z-axis,
+		// the vector is (-omega*vy, omega*vx)
+		float ax_c = -omega * vy;
+		float ay_c = omega * vx;
+
+		// Total ground acceleration (in chassis frame)
+		float ax_total = ax_d + ax_c;
+		float ay_total = ay_d + ay_c;
+		float a_total_mag = sqrtf(ax_total * ax_total + ay_total * ay_total);
+
+		if (a_total_mag > cfg->max_lin_accel) {
+			// Limit the total acceleration
+			// We can only affect the linear acceleration part (ax_d, ay_d)
+			// The desired linear acceleration needs to be adjusted
+
+			// Vector from centripetal accel to max_lin_accel circle center (-ax_c,
+			// -ay_c) to desired total accel (ax_d, ay_d) is (ax_d - (-ax_c)), (ay_d -
+			// (-ay_c)) = (ax_total, ay_total). We need to scale this vector to be on
+			// the circle of radius max_lin_accel
+			float scale = cfg->max_lin_accel / a_total_mag;
+			ax_total *= scale;
+			ay_total *= scale;
+
+			// The new limited desired linear acceleration
+			ax_d = ax_total - ax_c;
+			ay_d = ay_total - ay_c;
+
+			// Update delta_speed
+			delta_speed_X = ax_d * deltaTime;
+			delta_speed_Y = ay_d * deltaTime;
+		}
+
+		data->set_status.speedX += delta_speed_X;
+		data->set_status.speedY += delta_speed_Y;
 
 		// float currentSpeed = sqrtf(data->chassis_status.speedX *
 		// data->chassis_status.speedX +
@@ -251,6 +295,7 @@ struct chassis_driver_api chassis_driver_api = {
 	.set_speed = cchassis_set_speed,
 	.set_gyro = cchassis_set_gyro,
 	.get_status = cchassis_get_status,
+	.set_static = cchassis_set_static,
 };
 
 DT_INST_FOREACH_STATUS_OKAY(CHASSIS_INIT)

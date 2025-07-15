@@ -20,6 +20,7 @@
 		.chassis_sensor_data = {0},                                                        \
 		.enabled = true,                                                                   \
 		.track_angle = DT_PROP(DT_DRV_INST(inst), track_angle),                            \
+		.static_angle = false,                                                             \
 	};
 
 #define WHEELS_FOREACH(inst, fn) {DT_FOREACH_PROP_ELEM_SEP(DT_DRV_INST(inst), wheels, fn, (,)) }
