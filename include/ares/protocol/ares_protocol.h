@@ -2,6 +2,7 @@
 #define ARES_PROTOCOL_H
 
 #include <zephyr/kernel.h>
+#include <zephyr/net_buf.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,6 +13,8 @@ enum AresProtocolEvent {
 	ARES_PROTOCOL_EVENT_DISCONNECTED,
 };
 
+struct AresProtocol;
+
 /**
  * @brief API that a protocol must implement.
  *
@@ -21,7 +24,7 @@ enum AresProtocolEvent {
  */
 struct AresProtocolAPI {
 	void (*handle)(struct AresProtocol *protocol, struct net_buf *buf);
-	void (*handle_raw)(struct AresProtocol *protocol, uint8_t *data, uint16_t len);
+	void (*handle_byte)(struct AresProtocol *protocol, uint8_t byte);
 	void (*event)(struct AresProtocol *protocol, enum AresProtocolEvent event);
 	int (*init)(struct AresProtocol *protocol);
 };
