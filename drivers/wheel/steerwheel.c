@@ -116,8 +116,6 @@ static inline void steerwheel_set_speed(const struct device *dev, float speed, f
 		}
 	}
 
-	data->static_angle = NAN;
-
 	motor_set_angle(cfg->steer_motor, data->target.angle);
 	motor_set_speed(cfg->wheel_motor, data->set_rpm);
 }
@@ -166,7 +164,7 @@ static inline int steerwheel_set_static(const struct device *dev, float angle)
 		}
 	}
 
-	if (isnan(data->static_angle)) {
+	if (isnanf(data->static_angle)) {
 		data->static_angle = motor_get_angle(cfg->wheel_motor);
 	}
 
@@ -223,6 +221,7 @@ struct wheel_driver_api steerwheel_driver_api = {
 		.target = {.speed = 0.0f, .angle = 0.0f, .restricted = true},                      \
 		.negative = false,                                                                 \
 		.set_rpm = 0.0f,                                                                   \
+		.static_angle = NAN,                                                              \
 	};                                                                                         \
 	static const steerwheel_cfg_t steerwheel_cfg_##inst = {                                    \
 		.common = DT_WHEEL_CONFIG_GET(inst),                                               \
@@ -236,5 +235,9 @@ struct wheel_driver_api steerwheel_driver_api = {
 				    &steerwheel_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(STEERWHEEL_DEVICE_DEFINE)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // STEERWHEEL_C
