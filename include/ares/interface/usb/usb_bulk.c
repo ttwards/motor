@@ -276,7 +276,7 @@ struct usbd_class_api ares_if_api = {
 static void ares_processing_thread_entry(void *p1, void *p2, void *p3)
 {
 	struct net_buf *buf;
-	struct ares_if_data *data = usbd_class_get_private(ares_if_class_data);
+	// struct ares_if_data *data = usbd_class_get_private(ares_if_class_data);
 	// LOG_INF("ARES data processing thread started");
 
 	while (1) {
