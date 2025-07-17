@@ -33,21 +33,11 @@ const struct device *motor_devices[] = {DT_INST_FOREACH_STATUS_OKAY(DJI_DEVICE_P
 
 #define CTRL_STRUCT_DATA(i, _)                                                                     \
 	{                                                                                          \
-		.can_dev = NULL,                                                                   \
-		.flags = 0,                                                                        \
-		.full = {false},                                                                   \
-		.mask = {0},                                                                       \
-		.mapping =                                                                         \
-			{                                                                          \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-				{-1, -1, -1, -1},                                                  \
-			},                                                                         \
+		.can_dev = NULL, .flags = 0, .full = {false}, .mask = {0},                         \
+		.mapping = {                                                                       \
+			{-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1},    \
+			{-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1},    \
+		},                                                                                 \
 	}
 
 static int frameID_to_index(int tx_id)
@@ -328,11 +318,13 @@ int dji_init(const struct device *dev)
 		data->ctrl_struct->can_dev = (struct device *)cfg->common.phy;
 		uint8_t frame_id = frameID_to_index(cfg->common.tx_id);
 		uint8_t id = motor_id(dev);
-		if (!cfg->follow) {
-			data->ctrl_struct->mask[frame_id] |= 1 << id;
-		} else {
+		const struct dji_motor_config *follow_cfg =
+			(const struct dji_motor_config *)cfg->follow->config;
+		if (cfg->follow && cfg->common.phy == follow_cfg->common.phy) {
 			const struct device *follow_dev = cfg->follow;
 			data->ctrl_struct->mask[frame_id] |= 1 << motor_id(follow_dev);
+		} else {
+			data->ctrl_struct->mask[frame_id] |= 1 << id;
 		}
 		if (data->ctrl_struct->rx_ids[id]) {
 			LOG_ERR("Conflicting motor id: %d, dev name: %s", id + 1, dev->name);
@@ -426,7 +418,9 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 		const struct dji_motor_config *motor_cfg =
 			(const struct dji_motor_config *)dev->config;
 		int8_t frame_id = frameID_to_index(motor_cfg->common.tx_id);
-		if (motor_cfg->follow) {
+		const struct dji_motor_config *follow_cfg =
+			(const struct dji_motor_config *)motor_cfg->follow->config;
+		if (motor_cfg->follow && motor_cfg->common.phy == follow_cfg->common.phy) {
 			data->ctrl_struct->mask[frame_id] |= 1 << motor_id(motor_cfg->follow);
 		} else {
 			data->ctrl_struct->mask[frame_id] |= 1 << id;
@@ -456,7 +450,8 @@ void can_rx_callback(const struct device *can_dev, struct can_frame *frame, void
 	data->curr_time = curr_time;
 	data->calculated = false;
 
-	if (cfg->follow) {
+	struct dji_motor_config *follow_cfg = (struct dji_motor_config *)cfg->follow->config;
+	if (cfg->follow && cfg->common.phy == follow_cfg->common.phy) {
 		goto exit;
 	}
 
@@ -543,12 +538,14 @@ static void dji_timeout_handle(const struct device *dev, uint32_t curr_time)
 		if (data->missed_times > 3) {
 			LOG_ERR("Motor \"%s\" on canbus \"%s\" is not responding", dev->name,
 				cfg->common.phy->name);
-			if (!cfg->follow) {
-				data->ctrl_struct->mask[frameID_to_index(cfg->common.tx_id)] &=
-					~(1 << motor_id(dev));
-			} else {
+			const struct dji_motor_config *follow_cfg =
+				(const struct dji_motor_config *)cfg->follow->config;
+			if (cfg->follow && cfg->common.phy == follow_cfg->common.phy) {
 				data->ctrl_struct->mask[frameID_to_index(cfg->common.tx_id)] &=
 					~(1 << motor_id(cfg->follow));
+			} else {
+				data->ctrl_struct->mask[frameID_to_index(cfg->common.tx_id)] &=
+					~(1 << motor_id(dev));
 			}
 			data->online = false;
 		}
