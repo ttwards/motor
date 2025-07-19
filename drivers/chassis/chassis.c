@@ -53,7 +53,7 @@ int cchassis_init(const struct device *dev)
 		idx++;
 	}
 	data->currTime = k_cycle_get_32();
-	data->prevTime = data->currTime;
+	data->prevTime = data->currTime - 100;
 
 	// k_thread_create(&chassis_thread_data, chassis_stack_area,
 	// 		K_THREAD_STACK_SIZEOF(chassis_stack_area), chassis_thread, (void *)dev,
@@ -88,6 +88,8 @@ void cchassis_set_static(const struct device *dev, bool static_angle)
 {
 	chassis_data_t *data = dev->data;
 	data->static_angle = static_angle;
+	data->target_status.speedX = 0;
+	data->target_status.speedY = 0;
 }
 
 chassis_status_t *cchassis_get_status(const struct device *dev)
@@ -104,7 +106,9 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		float rollSpeedX = cfg->pos_Y_offset[idx] * data->set_status.gyro;
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->set_status.gyro;
 		float speedX, speedY;
-		if (data->static_angle) {
+		if (data->static_angle &&
+		    sqrtf(data->set_status.speedX * data->set_status.speedX +
+			  data->set_status.speedY * data->set_status.speedY) < 0.001f) {
 			int err = wheel_set_static(cfg->wheels[idx], data->angle_to_center[idx]);
 			if (err < 0) {
 				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
@@ -178,7 +182,7 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 		int32_t deltaTimeUs = k_cyc_to_us_floor32(data->currTime - data->prevTime);
 		float error = 0;
 
-		if (!isnan(data->chassis_sensor_data.Yaw) && data->angleControl) {
+		if (!isnanf(data->chassis_sensor_data.Yaw) && data->angleControl) {
 			float delta_Yaw = data->chassis_sensor_data.Yaw - data->target_status.angle;
 			delta_Yaw = fmodf(delta_Yaw, 360.0f);
 			if (delta_Yaw > 180) {
