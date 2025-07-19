@@ -17,8 +17,8 @@
 	compatible = "damiao,dm-mc02";
 
 	chosen {
-		zephyr,console = &usart10;
-		zephyr,shell-uart = &usart10;
+		zephyr,console = &rtt0;
+		zephyr,shell-uart = &rtt0;
 		zephyr,sram = &sram0;
 		zephyr,button = &user_button;
 		zephyr,flash = &flash0;
@@ -31,7 +31,6 @@
 
 	aliases {
 		watchdog0 = &iwdg;
-		vofa = &usart1;
 		led-strip = &led_strip;
 	};
 
@@ -107,7 +106,7 @@
 	div-m = <2>;
 	mul-n = <40>;
 	div-p = <1>;
-	div-q = <2>;
+	div-q = <4>;
 	div-r = <2>;
 	fracn = <0>;
 	clocks = <&clk_hse>;
@@ -115,8 +114,8 @@
 };
 
 &pll2 {
-	div-m = <32>;
-	mul-n = <129>;
+	div-m = <2>;
+	mul-n = <16>;
 	div-p = <2>;
 	div-q = <2>;
 	div-r = <2>;
@@ -177,7 +176,7 @@
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
 	pinctrl-names = "default";
-	current-speed = <4000000>;
+	current-speed = <921600>;
 	status = "okay";
 	data-bits = <8>;
 	stop-bits = "1";
