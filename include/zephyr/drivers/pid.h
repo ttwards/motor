@@ -7,6 +7,7 @@
 #define PID_H
 
 #include <math.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -201,6 +202,9 @@ STATIC float pid_calc_in(struct pid_data *data, float error, float deltaT_us)
 		if (pid_para->output_limit != 0 && fabsf(out) > pid_para->output_limit) {
 			out = out > 0 ? pid_para->output_limit : -pid_para->output_limit;
 		}
+		if (data->output != NULL) {
+			*(data->output) = out;
+		}
 		return out;
 	}
 	return NAN;
@@ -243,13 +247,28 @@ STATIC_VOID mit_reg_detri_input(struct pid_data *data, float *detri_curr, float 
 	data->detri_ref = detri_ref;
 }
 
-STATIC const struct pid_config *pid_get_params(struct pid_data *data)
+STATIC int pid_get_params(struct pid_data *data, struct pid_config *config)
 {
 	const struct device *dev = data->pid_dev;
-	if (dev == NULL) {
-		return NULL;
+	struct pid_config *pid_para = (struct pid_config *)dev->config;
+	if (dev == NULL || pid_para == NULL) {
+		return -ENOSYS;
 	}
-	return dev->config;
+	if (config != NULL) {
+		*config = *pid_para;
+	}
+	return 0;
+}
+
+STATIC int pid_set_params(struct pid_data *data, struct pid_config *config)
+{
+	const struct device *dev = data->pid_dev;
+	struct pid_config *pid_para = (struct pid_config *)dev->config;
+	if (dev == NULL || pid_para == NULL) {
+		return -ENOSYS;
+	}
+	*pid_para = *config;
+	return 0;
 }
 
 #ifdef __cplusplus
