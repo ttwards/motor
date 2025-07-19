@@ -37,7 +37,6 @@ typedef struct {
 	wheel_status_t status;
 	wheel_status_t target;
 	float set_rpm;
-	float static_angle;
 
 	bool negative;
 } steerwheel_data_t;
@@ -62,8 +61,6 @@ static inline void steerwheel_set_speed(const struct device *dev, float speed, f
 	if (cfg->inverse_steer) {
 		speed = -speed;
 	}
-
-	data->static_angle = NAN;
 
 	data->target.speed = speed;
 	float target_angle = fmodf(angle + cfg->common.angle_offset, 360.0f);
@@ -164,12 +161,10 @@ static inline int steerwheel_set_static(const struct device *dev, float angle)
 		}
 	}
 
-	if (isnanf(data->static_angle)) {
-		data->static_angle = motor_get_angle(cfg->wheel_motor);
-	}
+	motor_control(cfg->wheel_motor, SET_ZERO);
 
 	motor_set_angle(cfg->steer_motor, data->target.angle);
-	return motor_set_angle(cfg->wheel_motor, data->static_angle);
+	return motor_set_angle(cfg->wheel_motor, 0);
 }
 
 static inline wheel_status_t *steerwheel_get_speed(const struct device *dev)
@@ -221,7 +216,6 @@ struct wheel_driver_api steerwheel_driver_api = {
 		.target = {.speed = 0.0f, .angle = 0.0f, .restricted = true},                      \
 		.negative = false,                                                                 \
 		.set_rpm = 0.0f,                                                                   \
-		.static_angle = NAN,                                                              \
 	};                                                                                         \
 	static const steerwheel_cfg_t steerwheel_cfg_##inst = {                                    \
 		.common = DT_WHEEL_CONFIG_GET(inst),                                               \
