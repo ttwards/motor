@@ -48,6 +48,12 @@ properties:
   dm_torque_ratio:
     type: string
     required: false
+  minor_arc:
+    type: boolean
+    required: false
+  inverse:
+    type: boolean
+    required: false
   follow:
     type: phandle
     required: false
