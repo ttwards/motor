@@ -260,9 +260,8 @@ STATIC int pid_get_params(struct pid_data *data, struct pid_config *config)
 	return 0;
 }
 
-STATIC int pid_set_params(struct pid_data *data, struct pid_config *config)
+STATIC int pid_set_params(const struct device *dev, struct pid_config *config)
 {
-	const struct device *dev = data->pid_dev;
 	struct pid_config *pid_para = (struct pid_config *)dev->config;
 	if (dev == NULL || pid_para == NULL) {
 		return -ENOSYS;
