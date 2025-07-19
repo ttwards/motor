@@ -261,12 +261,12 @@ void dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 				break;
 			}
 			if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
-				const struct pid_config *params =
-					pid_get_params(cfg->common.pid_datas[i]);
+				struct pid_config params;
+				pid_get_params(cfg->common.pid_datas[i], &params);
 
 				data->common.mode = mode;
-				data->params.k_p = params->k_p;
-				data->params.k_d = params->k_d;
+				data->params.k_p = params.k_p;
+				data->params.k_d = params.k_d;
 				found = true;
 				break;
 			}
@@ -370,7 +370,8 @@ void dm_tx_data_handler(struct k_work *work)
 			data->online = false;
 			data->enabled = false;
 		}
-		if ((!data->online && data->enable) || (data->enable && !data->enabled)) {
+		if (((!data->online && data->enable) || (data->enable && !data->enabled)) &&
+		    now - data->prev_recv_time <= 5000 / cfg->freq) {
 			dm_control(motor_devices[i], ENABLE_MOTOR);
 		}
 	}
