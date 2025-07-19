@@ -166,6 +166,15 @@ __unused static void chassis_set_enabled(const struct device *dev, bool enabled)
 	}
 }
 
+__unused static void chassis_set_static(const struct device *dev, bool static_angle)
+{
+	const struct chassis_driver_api *api = (const struct chassis_driver_api *)dev->api;
+
+	if (api->set_static != NULL) {
+		api->set_static(dev, static_angle);
+	}
+}
+
 #ifdef __cplusplus
 }
 #endif
