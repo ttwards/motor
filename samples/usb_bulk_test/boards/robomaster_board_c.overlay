@@ -2,5 +2,4 @@
 
 };
 &usart6 {
-	current-speed = <115200>;
 };
