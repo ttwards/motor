@@ -24,13 +24,12 @@
 		.output_limit = DT_STRING_UNQUOTED_OR(node_id, out_max, 0),                        \
 		.detri_lpf = DT_STRING_UNQUOTED_OR(node_id, detri_lpf, NAN),                       \
 		.k_i = DT_STRING_UNQUOTED_OR(node_id, k_i, NAN),                                   \
-		.k_d = DT_STRING_UNQUOTED_OR(node_id, k_d, NAN),                                   \
-		.mit = false,                                                                      \
+		.k_d = DT_STRING_UNQUOTED_OR(node_id, k_d, NAN), .mit = false,                     \
 		.output_offset = DT_STRING_UNQUOTED_OR(node_id, offset, 0),                        \
 	}
 
 #define PID_CONFIG_DEFINE(inst)                                                                    \
-	static const struct pid_config pid_config_##inst =                                         \
+	static struct pid_config pid_config_##inst =                                               \
 		PID_SINGLE_DT_DRIVER_CONFIG_GET(DT_DRV_INST(inst));
 
 #define PID_INST(inst)                                                                             \
