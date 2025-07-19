@@ -497,7 +497,8 @@ static void proceed_delta_degree(const struct device *dev)
 
 	float delta_angle = data->common.sum_angle - data->target_angle;
 
-	if (fabsf(config->gear_ratio - 1) < 0.001f) {
+	if (config->minor_arc) {
+		delta_angle = fmodf(delta_angle, 360.0f);
 		if (delta_angle > 180) {
 			delta_angle -= 360.0f;
 		} else if (delta_angle < -180) {
@@ -567,6 +568,9 @@ static void motor_calc(const struct device *dev)
 
 	data->common.rpm =
 		data->RAWrpm * convert[data->convert_num][SPEED2RPM] / config->gear_ratio;
+	if (config->inverse) {
+		data->common.rpm = -data->common.rpm;
+	}
 	if (!config->is_dm_motor) {
 		data->common.torque = data->RAWcurrent *
 				      convert[data->convert_num][CURRENT2TORQUE] *
@@ -574,6 +578,9 @@ static void motor_calc(const struct device *dev)
 	} else {
 		data->common.torque = ((float)data->RAWcurrent / 16384.0f) * config->dm_i_max *
 				      config->dm_torque_ratio * config->gear_ratio;
+	}
+	if (config->inverse) {
+		data->common.torque = -data->common.torque;
 	}
 
 	if (config->follow) {
@@ -587,6 +594,9 @@ static void motor_calc(const struct device *dev)
 			data->target_torque = follow_data->target_torque;
 		} else {
 			data->target_torque = 0;
+		}
+		if (config->inverse) {
+			data->target_torque = -data->target_torque;
 		}
 		goto torque2current;
 	}
