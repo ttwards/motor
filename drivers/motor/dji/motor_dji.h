@@ -103,6 +103,9 @@ struct dji_motor_config {
 	float dm_i_max;
 	float dm_torque_ratio;
 	const struct device *follow;
+
+	bool minor_arc;
+	bool inverse;
 };
 
 // 全局变量声明

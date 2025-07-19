@@ -92,6 +92,8 @@
 		.is_dm_motor = DT_PROP(node, is_dm_motor),                                         \
 		.dm_i_max = DT_STRING_UNQUOTED_OR(node, dm_i_max, 0.0f),                           \
 		.dm_torque_ratio = DT_STRING_UNQUOTED_OR(node, dm_torque_ratio, 0.0f),             \
+		.minor_arc = DT_PROP(node, minor_arc),                                             \
+		.inverse = DT_PROP(node, inverse),                                                 \
 		.follow = DEVICE_DT_GET_OR_NULL(CONFIG_GET_FOLLOW(node)),                          \
 	};
 
