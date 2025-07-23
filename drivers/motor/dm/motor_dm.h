@@ -51,8 +51,8 @@ struct dm_motor_data {
 	bool online;
 	bool enable;
 	bool enabled;
-
 	bool update;
+	uint8_t tx_cnt;
 
 	uint64_t prev_recv_time;
 	int8_t err;

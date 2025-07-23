@@ -169,7 +169,8 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 		}
 	}
 
-	while (!k_sem_take(&chassis_sem, K_FOREVER)) {
+	while (1) {
+		k_sem_take(&chassis_sem, K_MSEC(1));
 		data->prevTime = data->currTime;
 		data->currTime = k_cycle_get_32();
 
@@ -292,7 +293,7 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 }
 
 K_THREAD_DEFINE(chassis_thread, CHASSIS_STACK_SIZE, chassis_thread_entry,
-		DEVICE_DT_GET(DT_DRV_INST(0)), NULL, NULL, 0, 0, 0);
+		DEVICE_DT_GET(DT_DRV_INST(0)), NULL, NULL, 1, 0, 0);
 
 struct chassis_driver_api chassis_driver_api = {
 	.set_angle = cchassis_set_angle,
