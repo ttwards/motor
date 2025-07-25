@@ -8,6 +8,7 @@
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <sys/_stdint.h>
 #include "../common/common.h"
 #include "motor_dm.h"
 #include "syscalls/kernel.h"
@@ -188,17 +189,17 @@ static void dm_rx_handler(const struct device *can_dev, struct can_frame *frame,
 
 	data->err = frame->data[0] >> 4;
 	data->enabled = data->err != 0;
-	data->online = true;
 	data->RAWangle = (frame->data[1] << 8) | (frame->data[2]);
 	data->RAWrpm = (frame->data[3] << 4) | (frame->data[4] >> 4);
 	data->RAWtorque = (frame->data[4] & 0xF) << 8;
 	data->update = true;
 
 	uint64_t now = k_uptime_get();
-	if (now - data->prev_recv_time > 4000 / cfg->freq && data->enable) {
+	if (data->enable && !data->online) {
 		LOG_ERR("motor %s is back online", dev->name);
 	}
 	data->prev_recv_time = now;
+	data->online = true;
 
 	k_work_submit_to_queue(&dm_work_queue, &dm_rx_data_handle);
 }
@@ -231,22 +232,22 @@ void dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 
 	switch (mode) {
 	case MIT:
-		strcpy(mode_str, "mit");
+		snprintf(mode_str, sizeof(mode_str), "mit");
 		data->tx_offset = 0x0;
 		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x01);
 		break;
 	case PV:
-		strcpy(mode_str, "pv");
+		snprintf(mode_str, sizeof(mode_str), "pv");
 		data->tx_offset = 0x100;
 		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x02);
 		break;
 	case VO:
-		strcpy(mode_str, "vo");
+		snprintf(mode_str, sizeof(mode_str), "vo");
 		data->tx_offset = 0x200;
 		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x03);
 		break;
 	case HYBRID:
-		strcpy(mode_str, "hybrid");
+		snprintf(mode_str, sizeof(mode_str), "hybrid");
 		data->tx_offset = 0x300;
 		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x0A, 0x04);
 		break;
@@ -283,6 +284,7 @@ void dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 int dm_set(const struct device *dev, motor_status_t *status)
 {
 	struct dm_motor_data *data = dev->data;
+	const struct dm_motor_config *cfg = dev->config;
 
 	if (status->mode == MIT) {
 		data->target_angle = RAD2DEG * status->angle;
@@ -302,6 +304,11 @@ int dm_set(const struct device *dev, motor_status_t *status)
 	} else {
 		return -ENOSYS;
 	}
+
+	struct can_frame tx_frame;
+	dm_motor_pack(dev, &tx_frame);
+	can_send_queued(cfg->common.phy, &tx_frame);
+	data->last_tx_time = k_uptime_get();
 
 	return 0;
 }
@@ -358,23 +365,21 @@ void dm_tx_data_handler(struct k_work *work)
 			data->last_tx_time = now;
 			data->tx_cnt++;
 		}
-
-		if (data->online && now - data->prev_recv_time <= 5000 / cfg->freq &&
-		    data->enable) {
-			if (data->err > 1) {
-				dm_control(motor_devices[i], CLEAR_ERROR);
-			}
-		}
-		if (now - data->prev_recv_time > 250000 / cfg->freq && data->online &&
+		if (now - data->prev_recv_time > 10000 / cfg->freq && data->online &&
 		    data->enable) {
 			LOG_ERR("motor %s is not responding, setting it to offline",
 				motor_devices[i]->name);
 			data->online = false;
 			data->enabled = false;
 		}
-		if (((data->online && data->enable && !data->enabled)) && data->tx_cnt == 3) {
-			dm_control(motor_devices[i], ENABLE_MOTOR);
+		if ((data->online && data->enable) && data->tx_cnt == 3) {
+			if (!data->enabled) {
+				dm_control(motor_devices[i], ENABLE_MOTOR);
+			}
 			data->tx_cnt = 0;
+			if (data->err > 1) {
+				dm_control(motor_devices[i], CLEAR_ERROR);
+			}
 		}
 	}
 }

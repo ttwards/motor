@@ -41,8 +41,7 @@ int cchassis_init(const struct device *dev)
 {
 	chassis_data_t *data = dev->data;
 	const chassis_cfg_t *cfg = dev->config;
-	int idx = 0;
-	while (cfg->wheels[idx] != NULL) {
+	for (int idx = 0; idx < CHASSIS_WHEEL_COUNT; idx++) {
 		float arc;
 		arm_atan2_f32(cfg->pos_Y_offset[idx], cfg->pos_X_offset[idx], &arc);
 
@@ -50,7 +49,6 @@ int cchassis_init(const struct device *dev)
 		arm_sqrt_f32(cfg->pos_X_offset[idx] * cfg->pos_X_offset[idx] +
 				     cfg->pos_Y_offset[idx] * cfg->pos_Y_offset[idx],
 			     &data->distance_to_center[idx]);
-		idx++;
 	}
 	data->currTime = k_cycle_get_32();
 	data->prevTime = data->currTime - 100;
@@ -228,46 +226,49 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 		float delta_speed_Y = data->target_status.speedY - data->set_status.speedY;
 		float deltaTime = (float)deltaTimeUs * 0.000001f;
 
-		// Calculate ground acceleration, including centripetal acceleration, expressed in
-		// chassis frame
-		float ax_d = delta_speed_X / deltaTime; // desired linear acceleration x
-		float ay_d = delta_speed_Y / deltaTime; // desired linear acceleration y
+		if (deltaTime > 1e-6f) {
+			// Calculate ground acceleration, including centripetal acceleration,
+			// expressed in chassis frame
+			float ax_d = delta_speed_X / deltaTime; // desired linear acceleration x
+			float ay_d = delta_speed_Y / deltaTime; // desired linear acceleration y
 
-		float vx = data->set_status.speedX;
-		float vy = data->set_status.speedY;
-		float omega = data->target_status.gyro;
+			float vx = data->set_status.speedX;
+			float vy = data->set_status.speedY;
+			float omega = data->target_status.gyro;
 
-		// Centripetal acceleration component: a_c = omega x v
-		// In 2D, with v=(vx, vy) and omega being a scalar rotating around z-axis,
-		// the vector is (-omega*vy, omega*vx)
-		float ax_c = -omega * vy;
-		float ay_c = omega * vx;
+			// Centripetal acceleration component: a_c = omega x v
+			// In 2D, with v=(vx, vy) and omega being a scalar rotating around z-axis,
+			// the vector is (-omega*vy, omega*vx)
+			float ax_c = -omega * vy;
+			float ay_c = omega * vx;
 
-		// Total ground acceleration (in chassis frame)
-		float ax_total = ax_d + ax_c;
-		float ay_total = ay_d + ay_c;
-		float a_total_mag = sqrtf(ax_total * ax_total + ay_total * ay_total);
+			// Total ground acceleration (in chassis frame)
+			float ax_total = ax_d + ax_c;
+			float ay_total = ay_d + ay_c;
+			float a_total_mag = sqrtf(ax_total * ax_total + ay_total * ay_total);
 
-		if (a_total_mag > cfg->max_lin_accel) {
-			// Limit the total acceleration
-			// We can only affect the linear acceleration part (ax_d, ay_d)
-			// The desired linear acceleration needs to be adjusted
+			if (a_total_mag > cfg->max_lin_accel) {
+				// Limit the total acceleration
+				// We can only affect the linear acceleration part (ax_d, ay_d)
+				// The desired linear acceleration needs to be adjusted
 
-			// Vector from centripetal accel to max_lin_accel circle center (-ax_c,
-			// -ay_c) to desired total accel (ax_d, ay_d) is (ax_d - (-ax_c)), (ay_d -
-			// (-ay_c)) = (ax_total, ay_total). We need to scale this vector to be on
-			// the circle of radius max_lin_accel
-			float scale = cfg->max_lin_accel / a_total_mag;
-			ax_total *= scale;
-			ay_total *= scale;
+				// Vector from centripetal accel to max_lin_accel circle center
+				// (-ax_c, -ay_c) to desired total accel (ax_d, ay_d) is (ax_d -
+				// (-ax_c)), (ay_d -
+				// (-ay_c)) = (ax_total, ay_total). We need to scale this vector to
+				// be on the circle of radius max_lin_accel
+				float scale = cfg->max_lin_accel / a_total_mag;
+				ax_total *= scale;
+				ay_total *= scale;
 
-			// The new limited desired linear acceleration
-			ax_d = ax_total - ax_c;
-			ay_d = ay_total - ay_c;
+				// The new limited desired linear acceleration
+				ax_d = ax_total - ax_c;
+				ay_d = ay_total - ay_c;
 
-			// Update delta_speed
-			delta_speed_X = ax_d * deltaTime;
-			delta_speed_Y = ay_d * deltaTime;
+				// Update delta_speed
+				delta_speed_X = ax_d * deltaTime;
+				delta_speed_Y = ay_d * deltaTime;
+			}
 		}
 
 		data->set_status.speedX += delta_speed_X;

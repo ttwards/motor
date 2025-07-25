@@ -11,7 +11,6 @@
 	static chassis_data_t chassis_data_##inst = {                                              \
 		.chassis_status = {0.0f},                                                          \
 		.set_status = {0.0f},                                                              \
-		.set_status = {0.0f},                                                              \
 		.currTime = 0ULL,                                                                  \
 		.prevTime = 0ULL,                                                                  \
 		.angleControl = true,                                                              \
