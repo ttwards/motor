@@ -8,3 +8,9 @@ config USB_BULK_INTERFACE
 	select ARES_COMM_LIB
 	select USB_DEVICE_STACK_NEXT
 	select UDC_WORKQUEUE
+
+config UART_INTERFACE
+	bool "UART_INTERFACE"
+	help
+	  Enable UART_INTERFACE
+	select NET_BUF
