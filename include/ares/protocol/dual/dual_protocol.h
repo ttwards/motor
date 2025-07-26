@@ -177,9 +177,6 @@ sync_table_t *dual_sync_add(struct AresProtocol *protocol, uint16_t ID, uint8_t 
 
 int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack);
 
-void dual_call_func(struct AresProtocol *protocol, uint16_t ID, void *arg1, void *arg2, void *arg3,
-		    dual_trans_cb_t cb);
-
 // Convert uint32_t back to float (C compatible)
 #define TO_FLOAT(x)                                                                                \
 	({                                                                                         \
