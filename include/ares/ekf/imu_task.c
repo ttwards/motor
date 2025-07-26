@@ -306,7 +306,12 @@ static struct sensor_trigger gyro_trig = {
 
 void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *gyro_dev)
 {
-#ifdef CONFIG_IMU_PWM_TEMP_CTRL
+	if (!IS_ENABLED(CONFIG_IMU_PWM_TEMP_CTRL)) {
+		LOG_ERR("IMU PWM TEMP CTRL is not enabled");
+		return;
+	}
+
+#if CONFIG_IMU_PWM_TEMP_CTRL
 	pwm_set_pulse_dt(&pwm, 20000000);
 
 	pid_reg_input(temp_pwm_pid, &current_temp, &target_temp);
