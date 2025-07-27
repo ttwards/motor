@@ -596,9 +596,9 @@ parse:
 			data->expected_frame_length = get_frame_length(
 				protocol, data->current_frame_type, data->rx_buffer);
 			if (data->expected_frame_length == 0) {
-				LOG_ERR("Cannot determine SYNC frame length");
+				LOG_ERR("Cannot determine SYNC frame length with ID: 0x%x",
+					GET_16BITS(data->rx_buffer, SYNC_ID_IDX));
 				reset_parser_state(data);
-				break;
 			}
 		}
 
