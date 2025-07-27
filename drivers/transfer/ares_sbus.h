@@ -23,7 +23,7 @@ struct sbus_driver_data {
 	bool frameLost;
 	bool failSafe;
 	bool digitalChannels[2];
-	int recv_cyc;
+	int recv_time;
 };
 
 #endif // SBUS_H
