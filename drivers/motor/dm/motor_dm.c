@@ -185,20 +185,19 @@ static void dm_rx_handler(const struct device *can_dev, struct can_frame *frame,
 {
 	const struct device *dev = user_data;
 	struct dm_motor_data *data = dev->data;
-	const struct dm_motor_config *cfg = dev->config;
+
+	data->prev_recv_time = k_uptime_get();
 
 	data->err = frame->data[0] >> 4;
-	data->enabled = data->err != 0;
+	data->enabled = data->err & 1;
 	data->RAWangle = (frame->data[1] << 8) | (frame->data[2]);
 	data->RAWrpm = (frame->data[3] << 4) | (frame->data[4] >> 4);
 	data->RAWtorque = (frame->data[4] & 0xF) << 8;
 	data->update = true;
 
-	uint64_t now = k_uptime_get();
 	if (data->enable && !data->online) {
 		LOG_ERR("motor %s is back online", dev->name);
 	}
-	data->prev_recv_time = now;
 	data->online = true;
 
 	k_work_submit_to_queue(&dm_work_queue, &dm_rx_data_handle);
@@ -359,6 +358,15 @@ void dm_tx_data_handler(struct k_work *work)
 		struct dm_motor_data *data = motor_devices[i]->data;
 		const struct dm_motor_config *cfg = motor_devices[i]->config;
 
+		if ((data->online && data->enable) && data->tx_cnt >= 3) {
+			if (!data->enabled) {
+				dm_control(motor_devices[i], ENABLE_MOTOR);
+			}
+			data->tx_cnt = 0;
+			if (data->err > 1) {
+				dm_control(motor_devices[i], CLEAR_ERROR);
+			}
+		}
 		if (now - data->last_tx_time >= 1000 / cfg->freq) {
 			dm_motor_pack(motor_devices[i], &tx_frame);
 			can_send_queued(cfg->common.phy, &tx_frame);
@@ -371,15 +379,6 @@ void dm_tx_data_handler(struct k_work *work)
 				motor_devices[i]->name);
 			data->online = false;
 			data->enabled = false;
-		}
-		if ((data->online && data->enable) && data->tx_cnt == 3) {
-			if (!data->enabled) {
-				dm_control(motor_devices[i], ENABLE_MOTOR);
-			}
-			data->tx_cnt = 0;
-			if (data->err > 1) {
-				dm_control(motor_devices[i], CLEAR_ERROR);
-			}
 		}
 	}
 }
