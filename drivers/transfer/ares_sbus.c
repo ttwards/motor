@@ -12,7 +12,7 @@
 
 #define DT_DRV_COMPAT ares_sbus
 
-LOG_MODULE_REGISTER(ares_sbus, 60);
+LOG_MODULE_REGISTER(ares_sbus, CONFIG_SBUS_LOG_LEVEL);
 
 // serial buffer pool
 #define BUF_SIZE 64
