@@ -59,9 +59,6 @@ int send_try_lock(struct AresProtocol *protocol, struct net_buf *buf, struct k_m
 static void error_handle(struct AresProtocol *protocol, uint16_t req_id, uint16_t error)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
-	if (!data->online) {
-		return;
-	}
 	GET_16BITS(data->error_frame_buf, ERROR_HEAD_IDX) = ERROR_FRAME_HEAD;
 	GET_8BITS(data->error_frame_buf, ERROR_ID_IDX) = req_id;
 	GET_16BITS(data->error_frame_buf, ERROR_CODE_IDX) = error;
@@ -76,7 +73,7 @@ static void error_handle(struct AresProtocol *protocol, uint16_t req_id, uint16_
 		LOG_ERR("Failed to allocate buffer for error frame.");
 		return;
 	}
-	int err = send_try_lock(protocol, buf, NULL);
+	int err = protocol->interface->api->send(protocol->interface, buf);
 	if (err != 0) {
 		// LOG_ERR("Failed to send error frame. %d", err);
 	}
@@ -162,10 +159,11 @@ static void usb_trans_heart_beat(struct k_timer *timer)
 	if (data->online) {
 		if ((k_uptime_get_32() - data->last_heart_beat) <= HEART_BEAT_DELAY &&
 		    ((int32_t)(k_uptime_get_32() - data->last_receive) >= 10 * HEART_BEAT_DELAY)) {
-			LOG_ERR("Connection lost. last_heart_beat: %d, last_receive: %d, "
+			LOG_ERR("%s Connection lost. last_heart_beat: %d, last_receive: %d, "
 				"current: "
 				"%d",
-				data->last_heart_beat, data->last_receive, k_uptime_get_32());
+				data->name, data->last_heart_beat, data->last_receive,
+				k_uptime_get_32());
 			data->online = false;
 			usb_offline_clean(protocol);
 		}
@@ -540,7 +538,7 @@ static void process_complete_frame(struct AresProtocol *protocol)
 static void process_byte(struct AresProtocol *protocol, uint8_t byte)
 {
 	struct dual_protocol_data *data = protocol->priv_data;
-
+parse:
 	switch (data->state) {
 	case PARSER_STATE_IDLE:
 		// 等待帧头第一个字节
@@ -557,10 +555,8 @@ static void process_byte(struct AresProtocol *protocol, uint8_t byte)
 		data->current_frame_type = get_frame_type(data->header_value);
 
 		if (data->current_frame_type == FRAME_TYPE_UNKNOWN) {
-			LOG_ERR("Unknown frame header: 0x%04x", data->header_value);
-			LOG_HEXDUMP_ERR(data->rx_buffer, 2, "Unknown frame header");
 			reset_parser_state(data);
-			break;
+			goto parse;
 		}
 
 		// 对于非SYNC帧，可以立即确定长度
@@ -640,6 +636,8 @@ static void rx_frame_parser(struct AresProtocol *protocol, uint8_t *buf, uint8_t
 
 void ares_dual_protocol_handle_byte(struct AresProtocol *protocol, uint8_t byte)
 {
+	struct dual_protocol_data *data = protocol->priv_data;
+	data->last_receive = k_uptime_get_32();
 	process_byte(protocol, byte);
 }
 

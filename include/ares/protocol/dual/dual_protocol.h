@@ -135,6 +135,7 @@ struct id_mapping {
 #define MAX_FUNC_COUNT MAX_PACK_COUNT
 
 struct dual_protocol_data {
+	const char *name;
 	struct k_timer heart_beat_timer;
 	struct k_mutex err_frame_mutex;
 
@@ -203,6 +204,7 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack);
 		.init = ares_dual_protocol_init,                                                   \
 	};                                                                                         \
 	struct dual_protocol_data Protocol_name##_data = {                                         \
+		.name = #Protocol_name,                                                            \
 		.heart_beat_timer = {0},                                                           \
 		.err_frame_mutex = {0},                                                            \
 		.func_cnt = 0,                                                                     \
