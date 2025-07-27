@@ -59,9 +59,7 @@ int8_t get_can_id(const struct device *dev)
 static void can_tx_callback(const struct device *can_dev, int error, void *user_data)
 {
 	struct k_sem *queue_sem = user_data;
-	if (!error) {
-		k_sem_give(queue_sem);
-	}
+	k_sem_give(queue_sem);
 }
 
 int can_send_queued(const struct device *can_dev, struct can_frame *frame)
@@ -87,8 +85,6 @@ int can_send_queued(const struct device *can_dev, struct can_frame *frame)
 		};
 		err = k_msgq_put(&can_tx_msgq, &q_frame, K_NO_WAIT);
 	}
-	// int err = can_send(can_dev, frame, K_NO_WAIT, can_tx_callback,
-	// 		   &tx_queue_sem[get_can_id(can_dev)]);
 	// if (err) {
 	// 	LOG_ERR("Failed to send CAN frame: %d", err);
 	// }
@@ -101,9 +97,9 @@ void can_tx_entry(void *arg1, void *arg2, void *arg3)
 	int err = 0;
 	uint32_t last_time = 0;
 	uint16_t failed_times = 0;
-	while (!k_msgq_get(&can_tx_msgq, &frame, K_FOREVER)) {
-		// LOG_ERR("Get CAN frame from msgq");
-		err = k_sem_take(frame.sem, K_NO_WAIT);
+	while (1) {
+		k_msgq_get(&can_tx_msgq, &frame, K_FOREVER);
+		err = k_sem_take(frame.sem, K_MSEC(2));
 		if (err == 0) {
 			err = can_send(frame.can_dev, &(frame.frame), K_USEC(100), can_tx_callback,
 				       frame.sem);
@@ -111,14 +107,13 @@ void can_tx_entry(void *arg1, void *arg2, void *arg3)
 				LOG_ERR("Failed to send CAN frame: %d", err);
 				last_time = k_uptime_get();
 			}
-			k_msgq_purge(&can_tx_msgq);
 		} else {
 			if (failed_times > 127) {
 				k_msgq_purge(&can_tx_msgq);
 				LOG_ERR("Failed too many times, purge msgq");
 				k_sem_give(frame.sem);
 				failed_times = 0;
-				break;
+				continue;
 			}
 			k_sleep(K_USEC(50));
 			failed_times++;
