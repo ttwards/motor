@@ -25,7 +25,7 @@ int sbus_parseframe_chan(const struct device *dev, int chan)
 	// 检查帧是否为空
 	struct sbus_driver_data *data = dev->data;
 
-	int curr_time = k_uptime_get_32();
+	int curr_time = k_uptime_get();
 	if (curr_time - data->recv_time > 100) {
 		return 1024;
 	}
@@ -116,7 +116,7 @@ static void uart_callback(const struct device *dev, struct uart_event *evt, void
 			return;
 		}
 
-		data->recv_time = k_uptime_get_32();
+		data->recv_time = k_uptime_get();
 		break;
 	}
 
