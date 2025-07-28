@@ -105,8 +105,8 @@ void cchassis_resolve(chassis_data_t *data, const chassis_cfg_t *cfg)
 		float rollSpeedY = -cfg->pos_X_offset[idx] * data->set_status.gyro;
 		float speedX, speedY;
 		if (data->static_angle &&
-		    sqrtf(data->set_status.speedX * data->set_status.speedX +
-			  data->set_status.speedY * data->set_status.speedY) < 0.001f) {
+		    (data->set_status.speedX * data->set_status.speedX +
+		     data->set_status.speedY * data->set_status.speedY) < 0.000001f) {
 			int err = wheel_set_static(cfg->wheels[idx], data->angle_to_center[idx]);
 			if (err < 0) {
 				wheel_set_speed(cfg->wheels[idx], 0, data->angle_to_center[idx]);
@@ -245,7 +245,8 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 			// Total ground acceleration (in chassis frame)
 			float ax_total = ax_d + ax_c;
 			float ay_total = ay_d + ay_c;
-			float a_total_mag = sqrtf(ax_total * ax_total + ay_total * ay_total);
+			float a_total_mag;
+			arm_sqrt_f32(ax_total * ax_total + ay_total * ay_total, &a_total_mag);
 
 			if (a_total_mag > cfg->max_lin_accel) {
 				// Limit the total acceleration
