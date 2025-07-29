@@ -40,12 +40,9 @@ const float xb[3] = {1, 0, 0};
 const float yb[3] = {0, 1, 0};
 const float zb[3] = {0, 0, 1};
 
-static float current_temp = 25.0f;
-
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
 static const struct pwm_dt_spec pwm = PWM_DT_SPEC_GET(DT_CHOSEN(ares_pwm));
 static float target_temp = 50.0f;
-static float temp_pwm_output = 19900000.0f;
 
 #if DT_NODE_EXISTS(DT_NODELABEL(imu_temp_pid))
 PID_NEW_INSTANCE(DT_NODELABEL(imu_temp_pid), ins)
@@ -60,15 +57,15 @@ float IMU_temp_read(const struct device *dev)
 {
 	struct sensor_value temp;
 	sensor_channel_get(dev, SENSOR_CHAN_DIE_TEMP, &temp);
-	current_temp = sensor_value_to_double(&temp);
-	return current_temp;
+	return sensor_value_to_double(&temp);
 }
 
-int IMU_temp_pwm_set(const struct device *dev)
+int IMU_temp_pwm_set(float current_temp, uint32_t delta_ms)
 {
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-	pid_calc(temp_pwm_pid);
-	return pwm_set_pulse_dt(&pwm, ((int)temp_pwm_output < 0) ? 0 : (int)temp_pwm_output);
+	float pwm_output = pid_calc_in(temp_pwm_pid, target_temp - current_temp, delta_ms * 0.001f);
+	pwm_set_pulse_dt(&pwm, ((int)pwm_output < 0) ? 0 : (int)pwm_output);
+	return (int)pwm_output;
 #else
 	return 0;
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
@@ -101,15 +98,15 @@ static void IMU_Sensor_update_measurement(INS_t *data)
 static void IMU_Sensor_temp_control(INS_t *data)
 {
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
-	if (accel_count % 50 == 0) {
-		IMU_temp_read(data->accel_dev);
+	uint32_t delta_ms = k_uptime_get_32() - data->temp_update_ms;
+	data->temp_update_ms = k_uptime_get_32();
+	data->imu_temp = IMU_temp_read(data->accel_dev);
 
-		IMU_temp_pwm_set(data->accel_dev);
+	IMU_temp_pwm_set(data->imu_temp, delta_ms);
 
-		if (current_temp >= 65) {
-			LOG_WRN("Current Temp: %.2f, PWM: %d", (double)current_temp,
-				(int)temp_pwm_output);
-		}
+	if (data->imu_temp >= 60) {
+		LOG_WRN("Current Temp: %.2f, PWM: %d", (double)data->imu_temp,
+			(int)IMU_temp_pwm_set(data->imu_temp, delta_ms));
 	}
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 }
@@ -146,8 +143,8 @@ static void InitQuaternion(const struct device *accel_dev, const struct device *
 	INS.accel_prev_cyc = INS.accel_curr_cyc;
 	INS.accel_curr_cyc = k_cycle_get_32();
 	sensor_sample_fetch(accel_dev);
-	IMU_temp_read(accel_dev);
-	IMU_temp_pwm_set(accel_dev);
+	float current_temp = IMU_temp_read(accel_dev);
+	IMU_temp_pwm_set(current_temp, 1);
 #endif // CONFIG_IMU_PWM_TEMP_CTRL
 
 	int sample_cnt = 0;
@@ -313,10 +310,6 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 
 #if CONFIG_IMU_PWM_TEMP_CTRL
 	pwm_set_pulse_dt(&pwm, 20000000);
-
-	pid_reg_input(temp_pwm_pid, &current_temp, &target_temp);
-	pid_reg_output(temp_pwm_pid, &temp_pwm_output);
-	pid_reg_time(temp_pwm_pid, &INS.accel_curr_cyc, &INS.accel_prev_cyc);
 
 	if (!pwm_is_ready_dt(&pwm)) {
 		LOG_INF("Error: PWM device %s is not ready", pwm.dev->name);

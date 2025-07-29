@@ -36,6 +36,9 @@ typedef struct {
 
 	update_cb_t update_cb;
 
+	uint32_t temp_update_ms;
+	float imu_temp;
+
 	const struct device *accel_dev;
 	const struct device *gyro_dev;
 } INS_t;
@@ -57,7 +60,6 @@ typedef struct {
 } IMU_Param_t;
 
 float IMU_temp_read(const struct device *dev);
-int IMU_temp_pwm_set(const struct device *dev);
 void IMU_Sensor_set_update_cb(update_cb_t cb);
 #ifdef CONFIG_IMU_PWM_TEMP_CTRL
 void IMU_Sensor_set_IMU_temp(float temp);
