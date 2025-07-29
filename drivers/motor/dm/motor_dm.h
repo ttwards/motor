@@ -26,6 +26,7 @@
 
 #define RAD2ROUND 1.0f / (2 * PI)
 #define RAD2DEG   180.0f / PI
+#define DEG2RAD   PI / 180.0f
 
 #define CANID_L 0u
 #define CANID_H 1u

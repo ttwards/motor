@@ -123,6 +123,7 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 {
 	uint16_t pos_tmp, vel_tmp, kp_tmp, kd_tmp, tor_tmp;
 	uint8_t *pbuf, *vbuf;
+	// float hybrid_p_tmp;
 	struct dm_motor_data *data = dev->data;
 	const struct dm_motor_config *cfg = dev->config;
 
@@ -157,6 +158,13 @@ static void dm_motor_pack(const struct device *dev, struct can_frame *frame)
 		vbuf = (uint8_t *)&data->target_radps;
 
 		memcpy(frame->data, vbuf, 4);
+		break;
+	case HYBRID:
+		// hybrid_p_tmp = data->target_angle * DEG2RAD;
+		// memcpy(frame->data, &hybrid_p_tmp, 4);
+		// vel_tmp = data->target_radps * 100;
+		// frame->data[4] = (vel_tmp >> 8);
+		// frame->data[5] = vel_tmp;
 		break;
 	default:
 		break;
@@ -255,28 +263,39 @@ void dm_motor_set_mode(const struct device *dev, enum motor_mode mode)
 		dm_control(dev, DISABLE_MOTOR);
 	}
 
-	if (mode != VO) {
-		bool found = false;
-		for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
-			if (cfg->common.pid_datas[i]->pid_dev == NULL) {
-				break;
-			}
-			if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
-				struct pid_config params = {0};
-				pid_get_params(cfg->common.pid_datas[i], &params);
-
-				data->common.mode = mode;
-				data->params.k_p = params.k_p;
-				data->params.k_d = params.k_d;
-				found = true;
-				break;
-			}
+	bool found = false;
+	for (int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
+		if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+			break;
 		}
-		if (!found) {
-			LOG_ERR("Mode %s not found", mode_str);
+		if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
+			struct pid_config params = {0};
+			pid_get_params(cfg->common.pid_datas[i], &params);
+
+			data->common.mode = mode;
+			data->params.k_p = params.k_p;
+			data->params.k_d = params.k_d;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		LOG_ERR("Mode %s not found", mode_str);
+		if (mode != VO && mode != HYBRID) {
 			dm_control(dev, DISABLE_MOTOR);
 			data->enable = false;
 		}
+	} else if (mode == VO) {
+		union {
+			float f;
+			uint32_t u;
+		} conv;
+		conv.f = data->params.k_p;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x19, conv.u);
+		conv.f = data->params.k_i;
+		dm_edit_reg_value(cfg->common.phy, cfg->common.tx_id, 0x1A, conv.u);
+	} else if (mode == PV) {
+		LOG_ERR("PV mode params setting not supported");
 	}
 }
 
