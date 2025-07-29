@@ -128,7 +128,7 @@ struct id_mapping {
 	uint16_t req_id;
 
 	struct k_mutex mutex;
-	__aligned(4) uint8_t buf[REPL_FRAME_LENGTH];
+	__aligned(4) uint8_t buf[REPL_FRAME_LENGTH + 2]; // +2 for potential CRC16
 };
 
 #define MAX_PACK_COUNT 8
@@ -153,7 +153,7 @@ struct dual_protocol_data {
 	dual_func_ret_cb_t func_ret_cb;
 
 	uint8_t func_tx_bckup_cnt;
-	__aligned(4) uint8_t error_frame_buf[ERROR_FRAME_LENGTH];
+	__aligned(4) uint8_t error_frame_buf[ERROR_FRAME_LENGTH + 2]; // +2 for potential CRC16
 	
 	// 状态机相关字段
 	enum parser_state state;
@@ -161,7 +161,9 @@ struct dual_protocol_data {
 	uint8_t rx_buffer[256];  // 接收缓冲区
 	uint16_t rx_buffer_pos;  // 当前接收位置
 	uint16_t expected_frame_length;  // 期望的帧长度
-	uint16_t header_value;   // 帧头值
+	uint16_t header_value;           // 帧头值
+
+	bool crc_enabled;
 };
 
 int dual_ret_cb_set(struct AresProtocol *protocol, dual_func_ret_cb_t cb);
@@ -196,7 +198,7 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack);
 		result;                                                                            \
 	})
 
-#define DUAL_PROPOSE_PROTOCOL_DEFINE(Protocol_name)                                                \
+#define DUAL_PROPOSE_PROTOCOL_DEFINE(Protocol_name)                                   \
 	struct AresProtocolAPI Protocol_name##_api = {                                             \
 		.handle = ares_dual_protocol_handle,                                               \
 		.handle_byte = ares_dual_protocol_handle_byte,                                     \
@@ -217,6 +219,36 @@ int dual_sync_flush(struct AresProtocol *protocol, sync_table_t *pack);
 		.rx_buffer_pos = 0,                                                                \
 		.expected_frame_length = 0,                                                        \
 		.header_value = 0,                                                                 \
+		.crc_enabled = false,                                                        \
+	};                                                                                         \
+	struct AresProtocol Protocol_name = {                                                      \
+		.name = #Protocol_name,                                                            \
+		.api = &Protocol_name##_api,                                                       \
+		.priv_data = &Protocol_name##_data,                                                \
+	};
+
+	#define DUAL_PROPOSE_PROTOCOL_DEFINE_CRC(Protocol_name)                                                \
+	struct AresProtocolAPI Protocol_name##_api = {                                             \
+		.handle = ares_dual_protocol_handle,                                               \
+		.handle_byte = ares_dual_protocol_handle_byte,                                     \
+		.event = ares_dual_protocol_event,                                                 \
+		.init = ares_dual_protocol_init,                                                   \
+	};                                                                                         \
+	struct dual_protocol_data Protocol_name##_data = {                                         \
+		.name = #Protocol_name,                                                            \
+		.heart_beat_timer = {0},                                                           \
+		.err_frame_mutex = {0},                                                            \
+		.func_cnt = 0,                                                                     \
+		.sync_cnt = 0,                                                                     \
+		.func_tx_bckup_msgq = {0},                                                         \
+		.online = false,                                                                   \
+		.func_tx_bckup_cnt = 0,                                                            \
+		.state = PARSER_STATE_IDLE,                                                        \
+		.current_frame_type = FRAME_TYPE_UNKNOWN,                                          \
+		.rx_buffer_pos = 0,                                                                \
+		.expected_frame_length = 0,                                                        \
+		.header_value = 0,                                                                 \
+		.crc_enabled = true,                                                        \
 	};                                                                                         \
 	struct AresProtocol Protocol_name = {                                                      \
 		.name = #Protocol_name,                                                            \
