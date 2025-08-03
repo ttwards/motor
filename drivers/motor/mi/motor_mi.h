@@ -104,7 +104,7 @@ struct mi_motor_data {
 	uint8_t can_id;    // CAN ID
 	uint8_t master_id; // MCU唯一标识符[后8位，共64位]
 
-	int8_t missed_times;
+	int16_t missed_times;
 	int8_t err;
 
 	float limit_cur;
