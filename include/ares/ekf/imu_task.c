@@ -256,10 +256,13 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 	}
 
 	if (trigger->chan == SENSOR_CHAN_ACCEL_XYZ && accel_count++ % MEASURE_UPDATE_GAP == 0) {
-		sensor_sample_fetch(dev);
+		sensor_sample_fetch(INS.accel_dev);
+		sensor_sample_fetch(INS.gyro_dev);
 
 		struct sensor_value accel_data[3];
-		sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, accel_data);
+		struct sensor_value gyro_data[3];
+		sensor_channel_get(INS.accel_dev, SENSOR_CHAN_ACCEL_XYZ, accel_data);
+		sensor_channel_get(INS.gyro_dev, SENSOR_CHAN_GYRO_XYZ, gyro_data);
 
 		INS.Accel[X] = (sensor_value_to_float(&accel_data[X]) - QEKF_INS.AccelBias[X]) /
 			       QEKF_INS.AccelBeta[X];
@@ -271,10 +274,10 @@ static void IMU_Sensor_trig_handler(const struct device *dev, const struct senso
 		IMU_Sensor_update_measurement(&INS);
 	} else if (trigger->chan == SENSOR_CHAN_GYRO_XYZ &&
 		   gyro_count++ % PREDICT_UPDATE_GAP == 0) {
-		sensor_sample_fetch(dev);
+		sensor_sample_fetch(INS.gyro_dev);
 
 		struct sensor_value gyro_data[3];
-		sensor_channel_get(dev, SENSOR_CHAN_GYRO_XYZ, gyro_data);
+		sensor_channel_get(INS.gyro_dev, SENSOR_CHAN_GYRO_XYZ, gyro_data);
 
 		INS.Gyro[0] = sensor_value_to_float(&gyro_data[0]) - QEKF_INS.GyroBias[0];
 		INS.Gyro[1] = sensor_value_to_float(&gyro_data[1]) - QEKF_INS.GyroBias[1];
@@ -336,7 +339,7 @@ void IMU_Sensor_trig_init(const struct device *accel_dev, const struct device *g
 	InitQuaternion(accel_dev, gyro_dev, init_quaternion, INS.lpf_Accel);
 
 	// 调用初始化
-	IMU_QuaternionEKF_Init(init_quaternion, 20, 0.001, 10000, 0.9996, 0);
+	IMU_QuaternionEKF_Init(init_quaternion, 10, 0.001, 1e6, 0.9996, 0);
 
 	// Re-initialize all timestamps right before enabling triggers
 	// This ensures the first dt=0, and the second dt is small (actual first inter-sample

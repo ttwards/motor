@@ -235,7 +235,7 @@ zephyr_udc0: &usbotg_fs {
         reg = <1>;
         spi-max-frequency = <8000000>;
         int-gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>;
-        gyro-hz = "2000_230";
+        gyro-hz = "2000_532";
         gyro-fs = <1000>;
 		int3-4-map-io = <0x01>;
 		int3-4-conf-io = <0x01>;
@@ -251,6 +251,20 @@ zephyr_udc0: &usbotg_fs {
 	// 	   <&dma1 4 0 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>;
 	//<&dmax stream channel flags>
 	// dma-names = "rx", "tx";
+};
+
+&i2c3 {
+	status = "okay";
+	pinctrl-0 = <&i2c3_sda_pc9
+				&i2c3_scl_pa8>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	ist8310: ist8310@e {
+		compatible = "isentek,ist8310";
+		reg = <0xe>;
+		supply-gpios = <&gpiog 6 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &flash0 {
