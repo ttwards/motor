@@ -340,23 +340,23 @@ void mi_tx_data_handler(struct k_work *work)
 		// LOG_INF("begin");
 		struct mi_motor_data *data = motor_devices[i]->data;
 		const struct mi_motor_cfg *cfg = motor_devices[i]->config;
-		if (data->online) {
+		if (data->enabled) {
 			int can_id = get_can_id(motor_devices[i]);
-			if (data->missed_times > 300 && data->enabled == true) {
+			if (data->missed_times > 600) {
 				LOG_ERR("Motor %s is not responding, setting it to offline.",
 					motor_devices[i]->name);
 				data->missed_times = 0;
-				struct can_frame frame = {0};
-				frame.flags = CAN_FRAME_IDE;
-				frame.dlc = 8;
-				struct mi_can_id *mi_can_id = (struct mi_can_id *)&(frame.id);
-				mi_can_id->id = cfg->common.id;
-				mi_can_id->mi_msg_mode = Communication_Type_MotorEnable;
-				can_send_queued(cfg->common.phy, &frame);
-				data->online = true;
-				data->enabled = true;
-				data->missed_times = 0;
-			} else {
+				// struct can_frame frame = {0};
+				// frame.flags = CAN_FRAME_IDE;
+				// frame.dlc = 8;
+				// struct mi_can_id *mi_can_id = (struct mi_can_id *)&(frame.id);
+				// mi_can_id->id = cfg->common.id;
+				// mi_can_id->mi_msg_mode = Communication_Type_MotorEnable;
+				// can_send_queued(cfg->common.phy, &frame);
+				// data->online = true;
+				// data->enabled = true;
+				// data->missed_times = 0;
+			} 
 				mi_motor_pack(motor_devices[i], tx_frame);
 
 				can_send_queued(cfg->common.phy, &tx_frame[0]);
@@ -365,7 +365,7 @@ void mi_tx_data_handler(struct k_work *work)
 					can_send_queued(cfg->common.phy, &tx_frame[1]);
 				}
 				data->missed_times++;
-			}
+			
 		}
 		if (i % 2 == 1) {
 			k_usleep(500);
@@ -385,24 +385,21 @@ void mi_init_handler(struct k_work *work)
 
 		reg_can_dev(cfg->common.phy);
 		filters[i].flags = CAN_FILTER_IDE;
-		filters[i].mask = 0x1F000000;
-		filters[i].id = 0x02000000 | (cfg->common.id & 0xFF);
+		filters[i].mask = 0x00000000;
+		filters[i].id = 0x00000000 ;
 		int err = can_add_rx_filter(cfg->common.phy, mi_can_rx_handler, 0, &filters[i]);
 		if (err < 0) {
 			LOG_ERR("Error adding CAN filter (err %d)", err);
 		}
 	}
-
-	k_sleep(K_MSEC(500));
+	k_sleep(K_MSEC(100));
 
 	for (int i = 0; i < MOTOR_COUNT; i++) {
-		mi_motor_control(motor_devices[i], ENABLE_MOTOR);
-		k_sleep(K_MSEC(2));
 		mi_motor_control(motor_devices[i], SET_ZERO);
-		k_sleep(K_MSEC(2));
+		k_sleep(K_MSEC(1));
 	}
-
-	k_timer_start(&mi_tx_timer, K_NO_WAIT, K_MSEC(2));
+	
+	k_timer_start(&mi_tx_timer, K_NO_WAIT, K_MSEC(3));
 	k_timer_user_data_set(&mi_tx_timer, &mi_tx_data_handle);
 }
 
@@ -427,12 +424,15 @@ int mi_get(const struct device *dev, motor_status_t *status)
 int mi_set(const struct device *dev, motor_status_t *status)
 {
 	struct mi_motor_data *data = dev->data;
-
+	const struct mi_motor_cfg *cfg = dev->config;
+	char mode_str[10] = {0};
 	if (status->mode == MIT) {
+		strcpy(mode_str, "mit");
 		data->target_pos = status->angle / RAD2DEG;
 		data->target_radps = RPM2RADPS(status->rpm);
 		data->target_torque = status->torque;
 	} else if (status->mode == PV) {
+		strcpy(mode_str, "pv");
 		data->target_pos = status->angle / RAD2DEG;
 		data->target_radps = RPM2RADPS(status->rpm);
 	} else if (status->mode == VO) {
@@ -442,8 +442,33 @@ int mi_set(const struct device *dev, motor_status_t *status)
 	} else {
 		return -ENOSYS;
 	}
+	if(status->mode==MIT){
+		for(int i = 0; i < SIZE_OF_ARRAY(cfg->common.capabilities); i++) {
+			if (cfg->common.pid_datas[i]->pid_dev == NULL) {
+				break;
+			}
+			if (strcmp(cfg->common.capabilities[i], mode_str) == 0) {
+				struct pid_config params;
+				pid_get_params(cfg->common.pid_datas[i], &params);
 
-	return mi_motor_set_mode(dev, status->mode);
+				data->common.mode = status->mode;
+				data->params.k_p = params.k_p;
+				data->params.k_d = params.k_d;
+				break;
+			}
+		}
+	}
+if(status->mode != data->common.mode) {
+		// LOG_DBG("mi_set: mode changed from %d to %d", data->common.mode, status->mode);
+		data->common.mode = status->mode;
+		if (mi_motor_set_mode(dev, status->mode) < 0) {
+			LOG_ERR("Failed to set motor mode");
+			return -EIO;
+		}
+	}
+	else{
+		return 0; // No mode change, no need to set
+	}
 }
 
 DT_INST_FOREACH_STATUS_OKAY(MIMOTOR_INST)
