@@ -232,39 +232,54 @@ void chassis_thread_entry(void *arg1, void *arg2, void *arg3)
 			float ax_d = delta_speed_X / deltaTime; // desired linear acceleration x
 			float ay_d = delta_speed_Y / deltaTime; // desired linear acceleration y
 
-			float vx = data->set_status.speedX;
-			float vy = data->set_status.speedY;
-			float omega = data->target_status.gyro;
+			float ax_total, ay_total;
 
-			// Centripetal acceleration component: a_c = omega x v
-			// In 2D, with v=(vx, vy) and omega being a scalar rotating around z-axis,
-			// the vector is (-omega*vy, omega*vx)
-			float ax_c = -omega * vy;
-			float ay_c = omega * vx;
+			if (data->track_angle) {
+				// When track_angle is true, speeds and accelerations are in the
+				// ground frame.
+				ax_total = ax_d;
+				ay_total = ay_d;
+			} else {
+				// When track_angle is false, speeds are in the chassis frame.
+				// To get the total acceleration in the ground frame (expressed in
+				// chassis coords), we must add the centripetal acceleration.
+				float vx = data->set_status.speedX;
+				float vy = data->set_status.speedY;
+				float omega = data->target_status.gyro;
 
-			// Total ground acceleration (in chassis frame)
-			float ax_total = ax_d + ax_c;
-			float ay_total = ay_d + ay_c;
+				// Centripetal acceleration component: a_c = omega x v
+				float ax_c = -omega * vy;
+				float ay_c = omega * vx;
+
+				// Total ground acceleration (in chassis frame)
+				ax_total = ax_d + ax_c;
+				ay_total = ay_d + ay_c;
+			}
+
 			float a_total_mag;
 			arm_sqrt_f32(ax_total * ax_total + ay_total * ay_total, &a_total_mag);
 
 			if (a_total_mag > cfg->max_lin_accel) {
-				// Limit the total acceleration
-				// We can only affect the linear acceleration part (ax_d, ay_d)
-				// The desired linear acceleration needs to be adjusted
-
-				// Vector from centripetal accel to max_lin_accel circle center
-				// (-ax_c, -ay_c) to desired total accel (ax_d, ay_d) is (ax_d -
-				// (-ax_c)), (ay_d -
-				// (-ay_c)) = (ax_total, ay_total). We need to scale this vector to
-				// be on the circle of radius max_lin_accel
 				float scale = cfg->max_lin_accel / a_total_mag;
-				ax_total *= scale;
-				ay_total *= scale;
+				if (data->track_angle) {
+					ax_d *= scale;
+					ay_d *= scale;
+				} else {
+					// The new limited total acceleration
+					ax_total *= scale;
+					ay_total *= scale;
 
-				// The new limited desired linear acceleration
-				ax_d = ax_total - ax_c;
-				ay_d = ay_total - ay_c;
+					// We can only control the linear acceleration part (ax_d,
+					// ay_d), so we subtract the centripetal part to find the
+					// new ax_d and ay_d.
+					float vx = data->set_status.speedX;
+					float vy = data->set_status.speedY;
+					float omega = data->target_status.gyro;
+					float ax_c = -omega * vy;
+					float ay_c = omega * vx;
+					ax_d = ax_total - ax_c;
+					ay_d = ay_total - ay_c;
+				}
 
 				// Update delta_speed
 				delta_speed_X = ax_d * deltaTime;
