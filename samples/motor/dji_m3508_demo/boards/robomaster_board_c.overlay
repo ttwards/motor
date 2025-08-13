@@ -1,0 +1,35 @@
+// DJI M3508电机示例 - RoboMaster Board C设备树配置
+
+/ {
+    speed_pid_m3508: speed_pid_m3508 {
+        compatible = "pid,single";
+        #controller-cells = <0>;
+        k_p = <800>;
+        k_i = <50>;
+        k_d = <10>;
+        out_max = <2>;
+    };
+
+    angle_pid_m3508: angle_pid_m3508 {
+        compatible = "pid,single";
+        #controller-cells = <0>;
+        k_p = <1200>;
+        k_i = <0>;
+        k_d = <200>;
+        out_max = <50>;
+    };
+
+    m3508_motor: m3508_motor {
+        compatible = "dji,motor";
+        is_m3508;
+        id = <1>;
+        rx_id = <0x201>;
+        tx_id = <0x200>;
+        gear_ratio = "19.20";
+        status = "okay";
+        can_channel = <&can1>;
+        // 应当保持外环在前，内环在后
+        controllers = <&angle_pid_m3508 &speed_pid_m3508>;
+        capabilities = "angle", "speed";
+    };
+};
