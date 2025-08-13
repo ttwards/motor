@@ -1,4 +1,4 @@
-# Zephyr RTOS电机驱动
+# Zephyr RTOS 下位机框架
 ## 该项目希望以设备树形式描述机器人
 ### 最终的效果将如example.dts所示
 The structure is as shown below
