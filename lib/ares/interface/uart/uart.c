@@ -21,7 +21,7 @@ LOG_MODULE_REGISTER(ares_uart, LOG_LEVEL_INF); // 日志级别可以按需调整
 #define ARES_UART_PROCESSING_THREAD_PRIORITY   K_PRIO_PREEMPT(5)
 #define ARES_UART_RX_INACTIVE_TIMEOUT          10
 
-NET_BUF_POOL_DEFINE(uart_net_buf_pool, 8, 64, 4, NULL);
+NET_BUF_POOL_DEFINE(uart_net_buf_pool, 16, 128, 4, NULL); // 增加缓冲区数量和大小
 K_MEM_SLAB_DEFINE(uart_rx_slab, ARES_UART_BLOCK_SIZE, 8, 4);
 
 /**
@@ -44,6 +44,18 @@ int ares_uart_send(struct AresInterface *interface, struct net_buf *buf)
 	}
 
 	return 0;
+}
+
+int ares_uart_send_raw(struct AresInterface *interface, uint8_t *data, uint16_t len)
+{
+	struct AresUartInterface *uart_if = interface->priv_data;
+	int err;
+
+	err = uart_tx(uart_if->uart_dev, data, len, SYS_FOREVER_US);
+	if (err != 0) {
+		LOG_ERR("uart_tx failed with error %d", err);
+		return -EIO;
+	}
 }
 
 struct net_buf *ares_uart_interface_alloc_buf(struct AresInterface *interface)

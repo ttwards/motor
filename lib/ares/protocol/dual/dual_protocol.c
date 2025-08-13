@@ -1,5 +1,5 @@
 #include "ares/protocol/ares_protocol.h"
-#include "dual_protocol.h"
+#include "ares/protocol/dual/dual_protocol.h"
 #include "zephyr/kernel.h"
 #include "zephyr/net_buf.h"
 #include <zephyr/logging/log.h>

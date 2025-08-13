@@ -50,6 +50,11 @@ config EKF_LIB
 	help
 	  Enable EKF_LIB
 
+config MAHONY_LIB
+	bool "MAHONY_LIB"
+	help
+	  Enable MAHONY_LIB
+
 config VOFA_LIB
 	bool "VOFA_LIB"
 	help
@@ -74,18 +79,6 @@ config EXPERIMENTAL_BULK_LIB
 	bool "EXPERIMENTAL_BULK_LIB"
 	help
 	  Enable EXPERIMENTAL_BULK_LIB
-
-config PLOTTER
-	bool "PLOTTER"
-	help
-	  Enable PLOTTER
-
-config PLOTTER_FREQ
-	int "PLOTTER_FREQ"
-	range 10 1000
-	default 300
-	help
-	  Set PLOTTER_FREQ
 
 config ARES_COMM_LIB
 	bool "ARES_COMM"
