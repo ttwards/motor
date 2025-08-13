@@ -34,4 +34,5 @@ zephyr_syscall_include_directories(include)
 
 # 添加子目录
 add_subdirectory(drivers)
+add_subdirectory(lib)
 add_subdirectory(include)
