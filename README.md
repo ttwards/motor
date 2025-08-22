@@ -1,4 +1,4 @@
-# Zephyr RTOS电机驱动
+# Zephyr RTOS 下位机框架
 ## 该项目希望以设备树形式描述机器人
 ### 最终的效果将如example.dts所示
 The structure is as shown below
@@ -70,6 +70,7 @@ Once you have built the application, run the following command to flash it:
 ```shell
 west flash
 ```
+默认为stlink, 如果使用cmsis-dap请加上`--runner openocd`, Jlink则为`--runner jlink`
 If everything goes well, the LED on the board should be blinking
 
 Then you can have your motors running!

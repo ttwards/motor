@@ -1,0 +1,51 @@
+config ARES_PLOTTER_PROTOCOL
+	bool "AresPlot Protocol"
+	default n
+	help
+	  Enable AresPlot Protocol for real-time variable monitoring and plotting.
+	  This protocol allows remote monitoring and control of MCU variables
+	  through any Ares interface (UART, USB, etc.).
+
+config PLOTTER
+	bool "PLOTTER"
+	select ARES_COMM_LIB
+	select UART_INTERFACE
+	select ARES_PLOTTER_PROTOCOL
+	help
+	  Enable PLOTTER
+
+if ARES_PLOTTER_PROTOCOL
+
+config ARESPLOT_MAX_VARS_TO_MONITOR
+	int "Maximum number of variables to monitor"
+	default 10
+	range 1 50
+	help
+	  Maximum number of variables that can be monitored simultaneously.
+	  Increase this value if you need to monitor more variables, but be
+	  aware that it will increase memory usage.
+
+config ARESPLOT_SHARED_BUFFER_SIZE
+	int "Shared buffer size for protocol frames"
+	default 256
+	range 64 512
+	help
+	  Size of the buffer used for assembling and parsing protocol frames.
+	  Should be large enough to contain the largest possible frame.
+
+config ARESPLOT_ENABLE_ERROR_REPORT
+	bool "Enable error reporting"
+	default n
+	help
+	  Enable optional error reporting functionality. When enabled,
+	  the protocol can send error reports to the host PC.
+
+config ARESPLOT_FREQ
+	int "Sampling frequency"
+	default 500
+	range 1 1000
+	help
+	  Sampling frequency in Hz.
+	  This is the frequency at which the protocol will sample the variables.
+
+endif # ARES_PLOTTER_PROTOCOL 

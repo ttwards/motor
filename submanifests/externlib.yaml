@@ -1,0 +1,8 @@
+manifest:
+# zephyr-keep-sorted-start re(^\s+\- name:)
+  projects:
+    - name: etl
+      url: https://github.com/ETLCPP/etl.git
+      revision: master
+      path: breeze-sdk/modules/lib/etl
+# zephyr-keep-sorted-stop

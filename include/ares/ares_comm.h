@@ -6,7 +6,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net_buf.h>
 
-int ares_bind_interface(struct AresInterface *interface, struct AresProtocol *protocol)
+static inline int ares_bind_interface(struct AresInterface *interface, struct AresProtocol *protocol)
 {
 	// Notice that we initialize interface before protocol
 	if (interface == NULL || protocol == NULL) {
